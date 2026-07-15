@@ -4,6 +4,12 @@ from pathlib import Path
 from typing import List, Tuple
 
 import streamlit as st
+st.set_page_config(
+    page_title="Trimera AI Suite",
+    page_icon="🧠",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 from dotenv import load_dotenv
 from openai import OpenAI
 from pypdf import PdfReader
