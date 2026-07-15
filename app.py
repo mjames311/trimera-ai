@@ -1,15 +1,24 @@
 import os
 import re
 from pathlib import Path
+from PIL import Image
 from typing import List, Tuple
 
 import streamlit as st
 st.set_page_config(
+
     page_title="Trimera AI Suite",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+LOGO = Image.open("Assets/trimera_logo.png")
+
+st.image(LOGO, width=120)
+
+st.title("Trimera AI Suite")
+st.caption("Internal Clinical Operations Tools")
+st.divider()
 from dotenv import load_dotenv
 from openai import OpenAI
 from pypdf import PdfReader
