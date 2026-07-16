@@ -27,10 +27,8 @@ contraindications, authorization numbers, or patient facts.
 Preserve exact medication names, drug classes, doses, start dates, end dates,
 durations, outcomes, adverse effects, and reasons for discontinuation when stated.
 
-Clearly separate:
-1. What is documented
-2. What the payer requires
-3. What is missing or unclear
+Clearly separate what is documented from what the payer requires.
+Do not create a standalone Missing / Not Documented section.
 
 Do not guarantee approval.
 """.strip()
@@ -87,100 +85,103 @@ Extract:
 """.strip()
 
 OUTPUT_FORMAT = """
-Return exactly this format:
+Return exactly this structure using valid Markdown headings and tables:
 
-TRIMERA TRD PRIOR AUTHORIZATION REVIEW
+# TRIMERA TRD PRIOR AUTHORIZATION REVIEW
 
-REQUEST TYPE
+## Request Type
 [TMS or Spravato / Esketamine]
 
-PATIENT / PLAN
-Patient:
-DOB:
-Insurance / Plan:
-Plan Type:
-Member ID:
-Group Number:
-Requesting Provider:
-Authorization / Reference Number:
+## Patient / Plan
+- **Patient:** [value]
+- **DOB:** [value]
+- **Insurance / Plan:** [value]
+- **Plan Type:** [value]
+- **Member ID:** [value]
+- **Group Number:** [value]
+- **Requesting Provider:** [value]
+- **Authorization / Reference Number:** [value]
 
-REQUESTED TREATMENT
-Requested Service / Medication:
-Dose / Protocol:
-Frequency:
-Requested Units / Sessions:
-Requested Start Date:
-Benefit Route:
-Current Status:
+## Requested Treatment
+- **Requested Service / Medication:** [value]
+- **Dose / Protocol:** [value]
+- **Frequency:** [value]
+- **Requested Units / Sessions:** [value]
+- **Requested Start Date:** [value]
+- **Benefit Route:** [value]
+- **Current Status:** [value]
 
-DIAGNOSIS
-Primary Diagnosis:
-ICD-10:
-Severity / Episode:
-Other Relevant Diagnoses:
+## Diagnosis
+- **Primary Diagnosis:** [value]
+- **ICD-10:** [value]
+- **Severity / Episode:** [value]
+- **Other Relevant Diagnoses:** [value]
 
-ANTIDEPRESSANT TRIALS
-Use a table:
-Medication | Class | Dose | Start Date | End Date | Duration | Outcome | Reason Stopped | Adequate Trial?
+## Current Psychiatric Treatment
 
-DISTINCT ANTIDEPRESSANT CLASSES DOCUMENTED
+Use a valid Markdown table:
+
+| Medication | Dose / Directions | Status |
+|---|---|---|
+
+Only include medications that appear current in the document.
+
+## Prior Antidepressant / Psychiatric Medication Trials
+
+Use a valid Markdown table:
+
+| Medication | Class | Dose | Duration / Timing | Documented Outcome |
+|---|---|---|---|---|
+
+Include side effects, treatment failure, loss of effectiveness, or reason stopped inside Documented Outcome.
+Do not include separate rows for items that are completely absent from the document.
+
+## Distinct Antidepressant Classes Documented
 - [Class]
 - [Class]
-Class Count:
-At least two distinct classes documented: YES | NO | UNCLEAR
+- **Class Count:** [number]
+- **At least two distinct classes documented:** YES | NO | UNCLEAR
 
-AUGMENTATION / OTHER PSYCHIATRIC TRIALS
-Use a table:
-Medication / Therapy | Class or Type | Dose | Duration | Outcome
+## Psychotherapy History
+- **Type:** [value]
+- **Frequency:** [value]
+- **Duration:** [value]
+- **Outcome:** [value]
+- **Meets stated payer requirement:** YES | NO | UNCLEAR
 
-CURRENT TREATMENT
-Current Antidepressant:
-Current Dose:
-Other Current Psychiatric Medications:
-Concurrent Treatment Requirement Met: YES | NO | UNCLEAR
+## Severity Measures
 
-PSYCHOTHERAPY HISTORY
-Type:
-Frequency:
-Duration:
-Outcome:
-Meets stated payer requirement: YES | NO | UNCLEAR
+Use a valid Markdown table:
 
-SEVERITY MEASURES
-Use a table:
-Scale | Score | Date | Interpretation if explicitly stated
+| Scale | Score | Date | Interpretation if explicitly stated |
+|---|---|---|---|
 
-RULE-OUTS / CONTRAINDICATIONS
-Use a table:
-Criterion | Documented Status | Supporting Text or Location
+## Rule-Outs / Contraindications
 
-PRIOR TRD TREATMENT HISTORY
-Prior TMS:
-Prior Ketamine / Esketamine:
-Other Neuromodulation:
+Use a valid Markdown table:
 
-PAYER CRITERIA IDENTIFIED
-- [Exact criterion]
-- [Exact criterion]
+| Criterion | Documented Status | Supporting Text |
+|---|---|---|
 
-MISSING OR UNCLEAR ITEMS
-- [Specific missing item]
-- [Specific missing item]
+Only include criteria actually addressed in the document or clearly required by the selected treatment type.
+Do not create a separate Missing / Not Documented section.
 
-DEADLINE / CONTACT INFORMATION
-Deadline:
-Phone:
-Fax:
-Portal / Address:
+## Prior TRD Treatment History
+- **Prior TMS:** [value]
+- **Prior Ketamine / Esketamine:** [value]
+- **Other Neuromodulation:** [value]
 
-RECOMMENDED NEXT ACTIONS
-1. [Action]
-2. [Action]
-3. [Action]
+## Payer Criteria Identified
+- [criterion]
+- [criterion]
 
-BOTTOM LINE
-[One concise paragraph stating whether the document appears complete,
-incomplete, or unclear for the selected request type, without guaranteeing approval.]
+## Recommended Next Actions
+1. [action]
+2. [action]
+3. [action]
+
+## Bottom Line
+[One concise paragraph stating whether the document appears complete, incomplete, or unclear for the selected request type, without guaranteeing approval.]
 """.strip()
 
 FOLLOWUP_PROMPT = """
@@ -333,11 +334,7 @@ if st.session_state.get("pa_report"):
     st.divider()
     st.subheader("Detailed PA review")
 
-    st.text_area(
-        "Report",
-        value=report,
-        height=760,
-    )
+    st.markdown(report)
 
     st.download_button(
         "Download PA review",
