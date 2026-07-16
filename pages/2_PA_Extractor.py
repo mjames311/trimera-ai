@@ -316,4 +316,6 @@ else:
             st.success("PDF text extracted.")
         except Exception as exc:
             st.error(f"Could not read the PDF: {exc}")
+
+
             
