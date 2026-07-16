@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pypdf import PdfReader
 
-
 st.set_page_config(
     page_title="TRD Prior Authorization Assistant",
     page_icon="📄",
@@ -19,28 +18,27 @@ load_dotenv()
 
 
 def get_setting(name: str, default: str = "") -> str:
+    """Read a setting from environment variables or Streamlit secrets."""
     value = os.getenv(name)
-
     if value:
         return value
 
     try:
-        value = st.secrets.get(name, default)
-        return str(value) if value is not None else default
+        secret_value = st.secrets.get(name, default)
+        return str(secret_value) if secret_value is not None else default
     except Exception:
         return default
 
 
 MODEL = get_setting("OPENAI_MODEL", "gpt-5.5")
-OPENAI_API_KEY = get_setting("OPENAI_API_KEY")
 TEST_PASSWORD = get_setting("TRIMERA_QA_PASSWORD")
+OPENAI_API_KEY = get_setting("OPENAI_API_KEY")
 
 
 def password_gate() -> None:
+    """Require the same password used by the Documentation QA tool."""
     if not TEST_PASSWORD:
-        st.warning(
-            "Set TRIMERA_QA_PASSWORD in the Streamlit app secrets."
-        )
+        st.warning("Set TRIMERA_QA_PASSWORD in the Streamlit app secrets.")
         st.stop()
 
     if st.session_state.get("authenticated"):
@@ -49,13 +47,10 @@ def password_gate() -> None:
     st.title("TRD Prior Authorization Assistant")
     st.caption("Internal Trimera Health tool")
 
-    password = st.text_input(
-        "Password",
-        type="password",
-    )
+    entered = st.text_input("Password", type="password")
 
     if st.button("Sign in", type="primary"):
-        if password == TEST_PASSWORD:
+        if entered == TEST_PASSWORD:
             st.session_state["authenticated"] = True
             st.rerun()
         else:
@@ -65,8 +60,9 @@ def password_gate() -> None:
 
 
 def extract_pdf(uploaded_file: Any) -> str:
+    """Extract selectable text from an uploaded PDF."""
     reader = PdfReader(uploaded_file)
-    pages = []
+    pages: list[str] = []
 
     for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
@@ -75,146 +71,90 @@ def extract_pdf(uploaded_file: Any) -> str:
     return "\n\n".join(pages).strip()
 
 
-def clean_json(raw_text: str) -> str:
+def clean_json_text(raw_text: str) -> str:
+    """Remove Markdown code fences before JSON parsing."""
     cleaned = raw_text.strip()
-
-    cleaned = re.sub(
-        r"^```(?:json)?\s*",
-        "",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-
-    cleaned = re.sub(
-        r"\s*```$",
-        "",
-        cleaned,
-    )
-
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
     return cleaned.strip()
 
 
-def as_list(value: Any) -> list:
+def as_list(value: Any) -> list[Any]:
     if value is None:
         return []
-
     if isinstance(value, list):
         return value
-
     return [value]
 
 
-def show_bullets(items: Any) -> None:
+def render_bullets(items: Any, empty_text: str = "None documented.") -> None:
     values = as_list(items)
-
     if not values:
-        st.write("None documented.")
+        st.write(empty_text)
         return
 
     for item in values:
         if isinstance(item, dict):
-            name = str(item.get("item", "")).strip()
+            label = str(item.get("item", item.get("name", ""))).strip()
             status = str(item.get("status", "")).strip()
             details = str(item.get("details", "")).strip()
 
-            parts = [
-                value
-                for value in [name, status, details]
-                if value
-            ]
-
-            if parts:
-                st.markdown("- " + " — ".join(parts))
+            line = " — ".join(part for part in [label, status, details] if part)
+            st.markdown(f"- {line}" if line else "- Not documented")
         else:
             st.markdown(f"- {item}")
 
 
-EXTRACTION_PROMPT = """
-You assist a psychiatric prior authorization coordinator.
-
-Extract useful information from a completed provider note for
-either TMS or Spravato.
+EXTRACTION_PROMPT = r"""
+You assist a psychiatric prior-authorization coordinator by extracting facts
+from a completed provider note for either TMS or Spravato.
 
 This is an extraction task only.
 
-RULES
-
-- Do not determine eligibility.
-- Do not determine medical necessity.
+Rules:
+- Do not determine eligibility, approval, medical necessity, or whether payer
+  criteria are met.
 - Do not recommend approval or denial.
-- Do not state whether payer criteria are met.
 - Do not invent facts.
-- Diagnosis must always be F33.2.
-- Do not create a missing-information section.
-- Keep the output concise.
-- Return valid JSON only.
-- Do not use Markdown code fences.
+- Diagnosis must always be returned as F33.2, regardless of diagnoses stated
+  in the note.
+- Do not create an "information not found" or "missing information" section.
+- Keep the result concise and practical for staff completing a PA form.
+- Return valid JSON only. Do not use Markdown code fences.
 
-MEDICATIONS
+Medication rules:
+- Extract antidepressants and other psychiatric medications relevant to a
+  TMS or Spravato PA, including augmentation agents when documented.
+- Include medication class.
+- Include dose and duration when documented.
+- If dose or duration is absent, write "Not documented".
+- If a side effect, intolerance, lack of benefit, partial response, loss of
+  effect, or other outcome is documented, report it.
+- If no specific outcome or side effect is documented, write
+  "No response documented".
+- Do not include unrelated medications unless they are pertinent to the PA.
 
-Extract antidepressants and other psychiatric medications
-relevant to TMS or Spravato prior authorization.
+Depressive history:
+- Extract depression onset, current episode duration, prior episode timelines,
+  meaningful dates or approximate years, depressive symptoms, functional
+  impairment, suicidality, and rating-scale results such as PHQ-9 when present.
 
-Include:
+Therapy:
+- Extract therapy type, start date or approximate year, duration, frequency,
+  response, and whether it is current when documented.
 
-- Medication name
-- Medication class
-- Dose, when documented
-- Duration or dates, when documented
-- Side effects, intolerance, response, or reason stopped
-
-If dose is absent, use "Not documented".
-
-If duration is absent, use "Not documented".
-
-If no response, failure reason, or side effect is documented,
-use "No response documented".
-
-Include relevant augmentation medications.
-
-DEPRESSIVE HISTORY
-
-Extract:
-
-- Approximate depression onset
-- Current depressive episode duration
-- Previous depressive episode timelines
-- Dates or approximate years
-- Depressive symptoms
-- Functional impairment
-- Suicidal ideation, when documented
-- PHQ-9 or other rating-scale results
-
-THERAPY HISTORY
-
-Extract:
-
-- Therapy type
-- Start date or approximate year
-- Duration
-- Frequency
-- Response
-- Whether therapy is current
-
-TMS SAFETY SCREENING
-
-For TMS, include every item below:
-
+TMS safety items:
 - Seizure history
 - Ferromagnetic metal in or near the head
 - Cochlear implant
 - Deep brain stimulator
-- Implanted cranial hardware
-- Other implanted device relevant to TMS
+- Implanted cranial hardware or other implanted device relevant to TMS
 - Significant head trauma
 - Psychosis
 - Mania
 
-SPRAVATO SAFETY SCREENING
-
-For Spravato, include every item below:
-
-- Blood pressure readings
+Spravato safety items:
+- Blood-pressure readings
 - Hypertension
 - Aneurysm
 - Arteriovenous malformation
@@ -223,18 +163,14 @@ For Spravato, include every item below:
 - Pregnancy
 - Substance-use concerns
 
-For each safety item use one status:
+For the selected treatment, include every listed safety item. Use one of:
+- "Explicitly denied"
+- "Present"
+- "Not documented"
+Add concise details when available.
 
-- Explicitly denied
-- Present
-- Not documented
-
-Add brief details when available.
-
-PERTINENT MEDICAL HISTORY
-
-Extract pertinent medical diagnoses or history that may help
-staff complete the authorization.
+Also extract pertinent medical diagnoses or medical history that may help staff
+complete the authorization.
 
 Return exactly this JSON structure:
 
@@ -266,21 +202,17 @@ Return exactly this JSON structure:
 
 password_gate()
 
-
 with st.sidebar:
     if st.button("Sign out"):
         st.session_state.clear()
         st.rerun()
 
     st.write(f"Model: `{MODEL}`")
-    st.info("The API key remains in the app secrets.")
-
+    st.info("The API key remains in the server-side app secrets.")
 
 st.title("📄 TRD Prior Authorization Assistant")
-
 st.caption(
-    "Extract useful TMS or Spravato authorization information "
-    "from a completed provider note."
+    "Extract useful TMS or Spravato authorization information from a provider note."
 )
 
 treatment = st.radio(
@@ -303,7 +235,6 @@ if method == "Paste text":
         height=360,
         placeholder="Paste the provider note here...",
     )
-
 else:
     uploaded_file = st.file_uploader(
         "Upload completed provider note",
@@ -317,5 +248,110 @@ else:
         except Exception as exc:
             st.error(f"Could not read the PDF: {exc}")
 
+if st.button(
+    "Extract PA Information",
+    type="primary",
+    use_container_width=True,
+):
+    if not note_text.strip():
+        st.error("Paste or upload a provider note.")
+        st.stop()
 
-            
+    if not OPENAI_API_KEY:
+        st.error("OPENAI_API_KEY is not configured in the app secrets.")
+        st.stop()
+
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    user_input = f"""
+SELECTED TREATMENT:
+{treatment}
+
+PROVIDER NOTE:
+{note_text}
+""".strip()
+
+    with st.spinner("Extracting prior-authorization information..."):
+        try:
+            response = client.responses.create(
+                model=MODEL,
+                instructions=EXTRACTION_PROMPT,
+                input=user_input,
+            )
+            raw_result = response.output_text
+            result = json.loads(clean_json_text(raw_result))
+        except json.JSONDecodeError:
+            st.error("The extraction completed, but the result was not valid JSON.")
+            with st.expander("Show raw model response"):
+                st.text(raw_result if "raw_result" in locals() else "")
+            st.stop()
+        except Exception as exc:
+            st.error(f"OpenAI request failed: {exc}")
+            st.stop()
+
+    st.success("Extraction complete")
+
+    st.subheader("Diagnosis")
+    st.code("F33.2", language=None)
+
+    with st.expander("Previous Medication Trials", expanded=True):
+        medications = as_list(result.get("medications"))
+
+        if medications:
+            normalized_medications = []
+            for medication in medications:
+                if not isinstance(medication, dict):
+                    continue
+
+                normalized_medications.append(
+                    {
+                        "Medication": medication.get("medication", ""),
+                        "Class": medication.get("class", ""),
+                        "Dose": medication.get("dose", "Not documented"),
+                        "Duration": medication.get("duration", "Not documented"),
+                        "Outcome": medication.get(
+                            "outcome", "No response documented"
+                        ),
+                    }
+                )
+
+            if normalized_medications:
+                st.dataframe(
+                    normalized_medications,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.write("No relevant medication trials were extracted.")
+        else:
+            st.write("No relevant medication trials were extracted.")
+
+    with st.expander("Depressive History", expanded=True):
+        render_bullets(result.get("depressive_history"))
+
+    with st.expander("Therapy History"):
+        render_bullets(result.get("therapy_history"))
+
+    with st.expander(f"{treatment} Safety Screening", expanded=True):
+        render_bullets(result.get("treatment_safety"))
+
+    with st.expander("Pertinent Medical History"):
+        render_bullets(result.get("pertinent_medical_history"))
+
+    with st.expander("Other Useful Information"):
+        render_bullets(result.get("other_useful_information"))
+
+    download_text = json.dumps(result, indent=2, ensure_ascii=False)
+
+    st.download_button(
+        "Download Extracted Information",
+        data=download_text,
+        file_name=f"{treatment.lower()}_pa_extraction.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+
+    st.caption(
+        "This tool organizes documented information only. "
+        "It does not determine payer eligibility or medical necessity."
+    )
