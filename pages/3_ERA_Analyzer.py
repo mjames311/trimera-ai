@@ -17,42 +17,6 @@ TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 
-def password_gate() -> None:
-    """Use the same password and login session as the other Trimera tools."""
-    if not TEST_PASSWORD:
-        st.warning("TRIMERA_QA_PASSWORD is not configured.")
-        st.stop()
-
-    if st.session_state.get("authenticated"):
-        return
-
-    st.title("Trimera ERA Analyzer")
-    st.caption("Internal Trimera Health billing tool")
-
-    entered = st.text_input("Password", type="password")
-
-    if st.button("Sign in", type="primary"):
-        if entered == TEST_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
-
-    st.stop()
-
-
-def extract_pdf(uploaded_file: Any) -> str:
-    """Extract selectable text from every page of an uploaded PDF."""
-    reader = PdfReader(uploaded_file)
-    pages: list[str] = []
-
-    for page_number, page in enumerate(reader.pages, start=1):
-        text = page.extract_text() or ""
-        pages.append(f"[PAGE {page_number}]\n{text}")
-
-    return "\n\n".join(pages).strip()
-
-
 ANALYSIS_PROMPT = """
 You are Trimera ERA Analyzer, an experienced outpatient behavioral-health
 billing and payment analyst.
@@ -106,7 +70,7 @@ Return the report in this exact structure:
 
 ## Line-Level Analysis
 
-Create a Markdown table with one row for each CPT/HCPCS line:
+Create a valid Markdown table with one row for each CPT/HCPCS line:
 
 | DOS | CPT/HCPCS | Modifier | Units | ICD-10 | Billed | Paid | Adjustment/Ineligible | Patient Responsibility | Remark Codes | Classification |
 |---|---|---|---:|---|---:|---:|---:|---:|---|---|
@@ -167,10 +131,83 @@ state that no message is recommended until the identified records are reviewed.
 """.strip()
 
 
+FOLLOWUP_PROMPT = """
+You are Ask Trimera inside the ERA Analyzer.
+
+You are given:
+1. The original uploaded ERA or claim-detail document text.
+2. The original ERA analysis.
+3. The user's follow-up conversation.
+
+Answer questions about this specific ERA or claim-detail review.
+
+Rules:
+- Use only the supplied document and analysis for claim-specific facts.
+- Never invent patient details, codes, payment amounts, denial reasons,
+  payer rules, or claim status.
+- Clearly distinguish contractual adjustments from denials.
+- Clearly distinguish facts in the ERA from reasonable next-step suggestions.
+- You may explain CARC/RARC codes, payment reductions, downcoding, bundling,
+  patient responsibility, and likely follow-up steps.
+- You may draft an internal billing note, payer message, DrChrono message,
+  clearinghouse message, corrected-claim checklist, or appeal outline.
+- Do not guarantee payment or appeal success.
+- Keep responses concise and operationally useful.
+""".strip()
+
+
+def password_gate() -> None:
+    if not TEST_PASSWORD:
+        st.warning("TRIMERA_QA_PASSWORD is not configured.")
+        st.stop()
+
+    if st.session_state.get("authenticated"):
+        return
+
+    st.title("Trimera ERA Analyzer")
+    st.caption("Internal Trimera Health billing tool")
+
+    entered = st.text_input("Password", type="password")
+
+    if st.button("Sign in", type="primary"):
+        if entered == TEST_PASSWORD:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+
+    st.stop()
+
+
+def extract_pdf(uploaded_file: Any) -> str:
+    reader = PdfReader(uploaded_file)
+    pages: list[str] = []
+
+    for page_number, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        pages.append(f"[PAGE {page_number}]\n{text}")
+
+    return "\n\n".join(pages).strip()
+
+
+def reset_era_session() -> None:
+    for key in [
+        "era_text",
+        "era_result",
+        "era_filename",
+        "era_followup_messages",
+    ]:
+        st.session_state.pop(key, None)
+
+
 password_gate()
 
 with st.sidebar:
-    if st.button("Sign out"):
+    if st.button("Start new ERA review", use_container_width=True):
+        reset_era_session()
+        st.rerun()
+
+    if st.button("Sign out", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
@@ -245,11 +282,20 @@ UPLOADED ERA OR CLAIM-DETAIL DOCUMENT:
                 input=user_input,
             )
             result = response.output_text
-
         except Exception as exc:
             st.error(f"OpenAI request failed: {exc}")
             st.stop()
 
+    st.session_state["era_text"] = era_text
+    st.session_state["era_result"] = result
+    st.session_state["era_filename"] = uploaded_file.name
+    st.session_state["era_followup_messages"] = []
+
+
+if st.session_state.get("era_result"):
+    result = st.session_state["era_result"]
+
+    st.divider()
     st.success("Analysis complete")
     st.markdown(result)
 
@@ -260,3 +306,68 @@ UPLOADED ERA OR CLAIM-DETAIL DOCUMENT:
         mime="text/markdown",
         use_container_width=True,
     )
+
+    st.divider()
+    st.subheader("💬 Ask Trimera about this ERA")
+    st.caption(
+        "Ask why a claim denied, which lines were reduced, what CARC/RARC "
+        "codes mean, or request a billing note, payer message, or appeal outline."
+    )
+
+    if "era_followup_messages" not in st.session_state:
+        st.session_state["era_followup_messages"] = []
+
+    for message in st.session_state["era_followup_messages"]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    followup_question = st.chat_input(
+        "Ask a follow-up about this ERA or claim..."
+    )
+
+    if followup_question:
+        st.session_state["era_followup_messages"].append(
+            {"role": "user", "content": followup_question}
+        )
+
+        with st.chat_message("user"):
+            st.markdown(followup_question)
+
+        conversation = "\n\n".join(
+            f"{message['role'].upper()}:\n{message['content']}"
+            for message in st.session_state["era_followup_messages"]
+        )
+
+        followup_context = f"""
+SOURCE FILE:
+{st.session_state.get("era_filename", "Unknown")}
+
+ORIGINAL ERA OR CLAIM-DETAIL DOCUMENT:
+{st.session_state["era_text"]}
+
+ORIGINAL ERA ANALYSIS:
+{st.session_state["era_result"]}
+
+FOLLOW-UP CONVERSATION:
+{conversation}
+""".strip()
+
+        client = OpenAI(api_key=OPENAI_API_KEY)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Reviewing the ERA context..."):
+                try:
+                    response = client.responses.create(
+                        model=MODEL,
+                        instructions=FOLLOWUP_PROMPT,
+                        input=followup_context,
+                    )
+                    answer = response.output_text
+                    st.markdown(answer)
+                except Exception as exc:
+                    st.error(f"OpenAI request failed: {exc}")
+                    st.stop()
+
+        st.session_state["era_followup_messages"].append(
+            {"role": "assistant", "content": answer}
+        )
