@@ -17,103 +17,184 @@ MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-EXTRACTOR_PROMPT = """
-You are Trimera Health's prior authorization assistant for outpatient
-behavioral health and treatment-resistant depression services.
+BASE_RULES = """
+You are Trimera Health's TRD prior authorization assistant.
 
-Review the uploaded prior authorization document and produce a practical,
-structured summary for Trimera staff.
+Use only the uploaded document.
+Never invent medications, dates, durations, outcomes, diagnoses, payer criteria,
+contraindications, authorization numbers, or patient facts.
 
-Rules:
-- Use only information contained in the uploaded document.
-- Never invent patient facts, payer requirements, diagnoses, medications,
-  dates, or authorization criteria.
-- Clearly label anything that is not found.
-- Preserve exact names, identifiers, dates, phone numbers, fax numbers,
-  reference numbers, deadlines, and payer wording when available.
-- Distinguish payer instructions from your own suggestions.
-- Keep the output concise enough for staff to use operationally.
-- Do not guarantee approval.
+Preserve exact medication names, drug classes, doses, start dates, end dates,
+durations, outcomes, adverse effects, and reasons for discontinuation when stated.
 
-Return this format:
+Clearly separate:
+1. What is documented
+2. What the payer requires
+3. What is missing or unclear
 
-TRIMERA PRIOR AUTHORIZATION SUMMARY
+Do not guarantee approval.
+""".strip()
 
+TMS_PROMPT = """
+The selected request type is TMS.
+
+Extract:
+- Patient, payer, member ID, group number, provider, authorization number
+- Requested TMS type, CPT codes, number of sessions, start date
+- Diagnosis and ICD-10
+- Every antidepressant trial with:
+  medication, class, dose, start date, end date, duration, outcome,
+  reason stopped, and whether adequacy is clear
+- Distinct antidepressant class count
+- Augmentation trials
+- Psychotherapy type, frequency, duration, outcome
+- PHQ-9, MADRS, HAM-D, or other scale with score and date
+- TMS rule-outs and contraindications:
+  seizure disorder, implanted metal/electronic devices near the head,
+  cochlear implants, aneurysm clips/coils, deep brain stimulator,
+  vagus nerve stimulator, bipolar/mania, psychosis, substance concerns,
+  and any payer-specific exclusions
+- Prior TMS history
+- Exact payer criteria
+- Missing information
+""".strip()
+
+SPRAVATO_PROMPT = """
+The selected request type is Spravato / Esketamine.
+
+Extract:
+- Patient, payer, member ID, group number, provider, authorization number
+- Requested dose, induction vs maintenance, frequency, start date,
+  pharmacy vs medical benefit
+- Diagnosis and ICD-10
+- Every antidepressant trial with:
+  medication, class, dose, start date, end date, duration, outcome,
+  reason stopped, and whether adequacy is clear
+- Distinct antidepressant class count
+- Augmentation trials
+- Current oral antidepressant and dose
+- Psychotherapy history
+- PHQ-9, MADRS, HAM-D, or other scale with score and date
+- Spravato rule-outs and contraindications:
+  aneurysmal vascular disease, AV malformation, intracerebral hemorrhage,
+  hypersensitivity, uncontrolled hypertension, pregnancy if addressed,
+  active psychosis if addressed, substance concerns if addressed,
+  and any payer-specific exclusions
+- REMS/site-of-care requirements
+- Prior ketamine/esketamine history
+- Exact payer criteria
+- Missing information
+""".strip()
+
+OUTPUT_FORMAT = """
+Return exactly this format:
+
+TRIMERA TRD PRIOR AUTHORIZATION REVIEW
+
+REQUEST TYPE
+[TMS or Spravato / Esketamine]
+
+PATIENT / PLAN
 Patient:
-[Name or Not found]
-
-Date of Birth:
-[DOB or Not found]
-
+DOB:
 Insurance / Plan:
-[Plan name and type or Not found]
-
+Plan Type:
 Member ID:
-[ID or Not found]
-
+Group Number:
 Requesting Provider:
-[Name or Not found]
-
-Requested Service / Medication:
-[Service, medication, dose, frequency, or Not found]
-
-Diagnosis / ICD-10:
-[Diagnosis and code or Not found]
-
 Authorization / Reference Number:
-[Number or Not found]
 
-Payer Contact Information:
-- Phone:
-- Fax:
-- Portal / Address:
-
+REQUESTED TREATMENT
+Requested Service / Medication:
+Dose / Protocol:
+Frequency:
+Requested Units / Sessions:
+Requested Start Date:
+Benefit Route:
 Current Status:
-[Pending, denied, additional information requested, approved, or unclear]
 
-Payer Request / Coverage Issue:
-[Plain-English explanation]
+DIAGNOSIS
+Primary Diagnosis:
+ICD-10:
+Severity / Episode:
+Other Relevant Diagnoses:
 
-Required Information or Records:
-- [Item]
-- [Item]
+ANTIDEPRESSANT TRIALS
+Use a table:
+Medication | Class | Dose | Start Date | End Date | Duration | Outcome | Reason Stopped | Adequate Trial?
 
-Missing or Unclear Information:
-- [Item]
-or
-None identified.
+DISTINCT ANTIDEPRESSANT CLASSES DOCUMENTED
+- [Class]
+- [Class]
+Class Count:
+At least two distinct classes documented: YES | NO | UNCLEAR
 
-Deadline / Time Limit:
-[Deadline or Not found]
+AUGMENTATION / OTHER PSYCHIATRIC TRIALS
+Use a table:
+Medication / Therapy | Class or Type | Dose | Duration | Outcome
 
-Recommended Next Actions:
+CURRENT TREATMENT
+Current Antidepressant:
+Current Dose:
+Other Current Psychiatric Medications:
+Concurrent Treatment Requirement Met: YES | NO | UNCLEAR
+
+PSYCHOTHERAPY HISTORY
+Type:
+Frequency:
+Duration:
+Outcome:
+Meets stated payer requirement: YES | NO | UNCLEAR
+
+SEVERITY MEASURES
+Use a table:
+Scale | Score | Date | Interpretation if explicitly stated
+
+RULE-OUTS / CONTRAINDICATIONS
+Use a table:
+Criterion | Documented Status | Supporting Text or Location
+
+PRIOR TRD TREATMENT HISTORY
+Prior TMS:
+Prior Ketamine / Esketamine:
+Other Neuromodulation:
+
+PAYER CRITERIA IDENTIFIED
+- [Exact criterion]
+- [Exact criterion]
+
+MISSING OR UNCLEAR ITEMS
+- [Specific missing item]
+- [Specific missing item]
+
+DEADLINE / CONTACT INFORMATION
+Deadline:
+Phone:
+Fax:
+Portal / Address:
+
+RECOMMENDED NEXT ACTIONS
 1. [Action]
 2. [Action]
 3. [Action]
 
-Staff Notes:
-[Important operational details, exact payer language, or caution points]
+BOTTOM LINE
+[One concise paragraph stating whether the document appears complete,
+incomplete, or unclear for the selected request type, without guaranteeing approval.]
 """.strip()
 
 FOLLOWUP_PROMPT = """
-You are Ask Trimera inside the Prior Authorization module.
+You are Ask Trimera inside the TRD Prior Authorization Assistant.
 
-You are given:
-1. The original uploaded PA document text.
-2. The original PA extraction report.
-3. The user's follow-up conversation.
+Use the selected request type, uploaded document, original PA review,
+and follow-up conversation.
 
-Answer questions about this specific prior authorization.
-
-Rules:
-- Use only the supplied document and report for case-specific facts.
-- Never invent missing information.
-- Clearly distinguish payer instructions from suggested next steps.
-- You may explain the payer request, identify missing records, draft a concise
-  fax cover sheet, internal note, provider message, or appeal outline when
-  asked.
-- Do not guarantee approval.
-- Keep responses practical and concise.
+Never invent facts.
+Preserve medication names, classes, dates, durations, outcomes, and rule-outs.
+Clearly distinguish documented facts from missing information.
+You may draft provider messages, fax cover sheets, payer responses,
+appeal outlines, internal notes, and checklists.
+Do not guarantee authorization.
 """.strip()
 
 
@@ -145,15 +226,14 @@ def extract_pdf(uploaded_file) -> str:
     pages: List[str] = []
 
     for page_number, page in enumerate(reader.pages, start=1):
-        pages.append(
-            f"[Page {page_number}]\n{page.extract_text() or ''}"
-        )
+        pages.append(f"[Page {page_number}]\n{page.extract_text() or ''}")
 
     return "\n\n".join(pages)
 
 
 def reset_pa_session() -> None:
     for key in [
+        "pa_request_type",
         "pa_document_text",
         "pa_report",
         "pa_followup_messages",
@@ -179,8 +259,13 @@ with st.sidebar:
 
 st.title("📄 TRD Prior Authorization Assistant")
 st.caption(
-    "Upload a prior authorization document to extract payer requirements "
-    "and next steps."
+    "Select TMS or Spravato, then upload the PA document for a detailed review."
+)
+
+request_type = st.radio(
+    "Select request type",
+    ["TMS", "Spravato / Esketamine"],
+    horizontal=True,
 )
 
 uploaded = st.file_uploader(
@@ -195,13 +280,10 @@ if uploaded:
         document_text = extract_pdf(uploaded)
 
         if document_text.strip():
-            st.success(
-                f"PDF text extracted from {uploaded.name}."
-            )
+            st.success(f"PDF text extracted from {uploaded.name}.")
         else:
             st.warning(
-                "The PDF did not contain selectable text. "
-                "It may be an image-only scan."
+                "The PDF did not contain selectable text. It may be an image-only scan."
             )
 
     except Exception as exc:
@@ -221,13 +303,16 @@ if st.button(
         st.error("OPENAI_API_KEY is not configured.")
         st.stop()
 
+    request_prompt = TMS_PROMPT if request_type == "TMS" else SPRAVATO_PROMPT
+    instructions = f"{BASE_RULES}\n\n{request_prompt}\n\n{OUTPUT_FORMAT}"
+
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     with st.spinner("Analyzing prior authorization..."):
         try:
             response = client.responses.create(
                 model=MODEL,
-                instructions=EXTRACTOR_PROMPT,
+                instructions=instructions,
                 input=document_text,
             )
             report = response.output_text
@@ -235,6 +320,7 @@ if st.button(
             st.error(f"OpenAI request failed: {exc}")
             st.stop()
 
+    st.session_state["pa_request_type"] = request_type
     st.session_state["pa_document_text"] = document_text
     st.session_state["pa_report"] = report
     st.session_state["pa_filename"] = uploaded.name
@@ -245,18 +331,18 @@ if st.session_state.get("pa_report"):
     report = st.session_state["pa_report"]
 
     st.divider()
-    st.subheader("PA summary")
+    st.subheader("Detailed PA review")
 
     st.text_area(
         "Report",
         value=report,
-        height=620,
+        height=760,
     )
 
     st.download_button(
-        "Download PA summary",
+        "Download PA review",
         data=report,
-        file_name="trimera_pa_summary.txt",
+        file_name="trimera_trd_pa_review.txt",
         mime="text/plain",
         use_container_width=True,
     )
@@ -264,8 +350,8 @@ if st.session_state.get("pa_report"):
     st.divider()
     st.subheader("💬 Ask Trimera about this PA")
     st.caption(
-        "Ask what the payer is requesting, what is missing, or request "
-        "a provider message, fax cover sheet, or appeal outline."
+        "Ask about medication classes, trial duration, rule-outs, missing criteria, "
+        "or request a provider message, fax cover sheet, or appeal outline."
     )
 
     if "pa_followup_messages" not in st.session_state:
@@ -281,10 +367,7 @@ if st.session_state.get("pa_report"):
 
     if followup_question:
         st.session_state["pa_followup_messages"].append(
-            {
-                "role": "user",
-                "content": followup_question,
-            }
+            {"role": "user", "content": followup_question}
         )
 
         with st.chat_message("user"):
@@ -296,13 +379,16 @@ if st.session_state.get("pa_report"):
         )
 
         followup_context = f"""
+REQUEST TYPE:
+{st.session_state["pa_request_type"]}
+
 SOURCE FILE:
 {st.session_state.get("pa_filename", "Unknown")}
 
 ORIGINAL PA DOCUMENT:
 {st.session_state["pa_document_text"]}
 
-ORIGINAL PA SUMMARY:
+ORIGINAL PA REVIEW:
 {st.session_state["pa_report"]}
 
 FOLLOW-UP CONVERSATION:
@@ -326,8 +412,5 @@ FOLLOW-UP CONVERSATION:
                     st.stop()
 
         st.session_state["pa_followup_messages"].append(
-            {
-                "role": "assistant",
-                "content": answer,
-            }
+            {"role": "assistant", "content": answer}
         )
