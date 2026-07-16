@@ -1,0 +1,60 @@
+TRIMERA DOCUMENTATION QA
+
+Provider Intended Billing:
+99215 99417
+
+Payer:
+Not specified
+
+Overall Result:
+REVIEW RECOMMENDED
+
+Documentation Confidence:
+93%
+
+Overall Audit Risk:
+MEDIUM
+
+================================================================
+
+For each intended code:
+
+[99215 / 1 unit] — BORDERLINE
+
+Support:
+The note documents an established-patient outpatient E/M encounter with a complete interval history, exam elements, and management of ongoing esketamine treatment including monitoring, counseling, review of symptoms, and assessment. However, the note does not clearly establish the level of E/M time or MDM elements needed to independently support a 99215 without relying on the prolonged-service add-on.
+
+Documentation Deficiencies:
+- No explicit 99215-level MDM elements are documented in a way that clearly supports high complexity.
+- The note’s time documentation appears directed to Spravato monitoring rather than clearly to separately billable E/M time.
+
+Audit Risk:
+MEDIUM
+
+================================================================
+
+[99417 / 1 unit] — NOT SUPPORTED
+
+Support:
+The note states a total time of 2 hours, but it does not document the qualifying base E/M code time or the required prolonged, separately identifiable time beyond the base service. Without clear base-code time and threshold documentation, support for 99417 is materially insufficient.
+
+Documentation Deficiencies:
+- No documented qualifying base E/M time for the underlying outpatient E/M service.
+- No clearly documented prolonged time beyond the threshold required for the add-on code.
+
+Audit Risk:
+HIGH
+
+================================================================
+
+Documentation Quality Improvements
+
+- The note would benefit from clearer separation of Spravato treatment-monitoring time from any separately billable E/M time.
+- The assessment/plan could better tie the clinical decision-making to the billed E/M service.
+- Time statements should specify what portion, if any, was dedicated to E/M versus procedure monitoring.
+
+================================================================
+
+Final Assessment
+
+The documentation is stronger for the encounter itself than for the prolonged-service add-on. As submitted, 99417 is not adequately supported, and 99215 remains borderline pending clearer E/M-specific support.
