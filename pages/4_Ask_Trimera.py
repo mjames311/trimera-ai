@@ -55,6 +55,16 @@ with st.sidebar:
 st.title("💬 Ask Trimera")
 st.caption("Ask questions about billing, coding, documentation, payers, and practice operations.")
 
+st.divider()
+
+uploaded_file = st.file_uploader(
+    "Upload a document",
+    type=["pdf", "txt", "csv", "docx", "png", "jpg", "jpeg"]
+)
+
+st.divider()
+
+
 if "ask_trimera_messages" not in st.session_state:
     st.session_state["ask_trimera_messages"] = []
 
