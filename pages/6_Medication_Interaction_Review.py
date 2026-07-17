@@ -4,12 +4,7 @@ from typing import Any
 import streamlit as st
 from openai import OpenAI
 
-
-st.set_page_config(
-    page_title="Medication Interaction Review",
-    page_icon="💊",
-    layout="wide",
-)
+st.set_page_config(page_title="Medication Interaction Review", page_icon="💊", layout="wide")
 
 APP_TITLE = "Medication Interaction Review"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
@@ -21,8 +16,10 @@ SYSTEM_INSTRUCTIONS = """
 You are Trimera Medication Interaction Review, a clinician-facing support tool
 for an outpatient psychiatry practice.
 
-Review one patient note, identify the patient's CURRENT medications, and assess
-potential medication-related safety concerns.
+You will first review one patient note, identify the patient's CURRENT
+medications, and assess potential medication-related safety concerns. After the
+initial review, continue as a back-and-forth clinical support chat about the same
+note and medication list.
 
 Rules:
 1. Do not treat discontinued medications, past trials, allergies, medications
@@ -38,13 +35,18 @@ Rules:
    alcohol, cannabis, food, or supplement interactions.
 6. Do not invent medications, diagnoses, doses, labs, or patient facts.
 7. Do not repeat patient identifiers in the response.
-8. Do not make autonomous treatment changes. Give clinician-facing monitoring
-   or verification considerations only.
-9. State clearly that the review requires clinician verification against the
-   current medication list, prescribing information, pharmacy record, or a
-   pharmacist.
+8. Do not make autonomous treatment changes. Give clinician-facing monitoring,
+   verification, and prescribing-information considerations only.
+9. Clearly distinguish facts from the note, interaction concerns, and clinical
+   inference.
+10. Maintain the complete conversation context. When the clinician asks a
+    follow-up question, answer based on the uploaded or pasted note and all prior
+    messages in this chat.
+11. State clearly that important findings require clinician verification against
+    the current medication list, prescribing information, pharmacy record, or a
+    pharmacist.
 
-Use this structure:
+For the INITIAL review, use this structure:
 
 # Medication Interaction Review
 
@@ -60,28 +62,34 @@ consideration.
 ## Uncertain medication status
 
 ## Clinician verification
+
+For FOLLOW-UP questions, answer directly and concisely. Do not repeat the full
+initial report unless requested.
 """.strip()
 
 
 def password_gate() -> None:
     if st.session_state.get("authenticated"):
         return
-
     if not TEST_PASSWORD:
         st.error("TRIMERA_QA_PASSWORD is not configured.")
         st.stop()
-
     st.title(APP_TITLE)
     st.caption("Internal Trimera Health clinician tool")
     entered = st.text_input("Password", type="password")
-
     if st.button("Sign in", type="primary"):
         if entered == TEST_PASSWORD:
             st.session_state["authenticated"] = True
             st.rerun()
         st.error("Incorrect password.")
-
     st.stop()
+
+
+def initialize_state() -> None:
+    st.session_state.setdefault("med_chat_messages", [])
+    st.session_state.setdefault("med_note_file_id", None)
+    st.session_state.setdefault("med_note_name", "")
+    st.session_state.setdefault("med_pasted_note", "")
 
 
 def get_client() -> OpenAI:
@@ -94,11 +102,7 @@ def get_client() -> OpenAI:
 def upload_note(client: OpenAI, uploaded_file: Any) -> str:
     uploaded_file.seek(0)
     created = client.files.create(
-        file=(
-            uploaded_file.name,
-            uploaded_file.getvalue(),
-            uploaded_file.type or "application/octet-stream",
-        ),
+        file=(uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type or "application/octet-stream"),
         purpose="user_data",
     )
     return created.id
@@ -113,138 +117,112 @@ def delete_note(client: OpenAI, file_id: str | None) -> None:
         pass
 
 
-def build_input(
-    pasted_note: str,
-    file_id: str | None,
-    additional_request: str,
-) -> list[dict[str, Any]]:
-    content: list[dict[str, str]] = []
+def clear_review() -> None:
+    file_id = st.session_state.get("med_note_file_id")
+    if file_id and API_KEY:
+        try:
+            delete_note(OpenAI(api_key=API_KEY), file_id)
+        except Exception:
+            pass
+    st.session_state["med_chat_messages"] = []
+    st.session_state["med_note_file_id"] = None
+    st.session_state["med_note_name"] = ""
+    st.session_state["med_pasted_note"] = ""
 
-    if file_id:
-        content.append({"type": "input_file", "file_id": file_id})
 
-    if pasted_note.strip():
-        content.append(
-            {
-                "type": "input_text",
-                "text": "PATIENT NOTE:\n\n" + pasted_note.strip(),
-            }
-        )
+def build_api_input() -> list[dict[str, Any]]:
+    api_input: list[dict[str, Any]] = []
+    for index, message in enumerate(st.session_state["med_chat_messages"]):
+        role = message["role"]
+        text = message["content"]
+        if role == "assistant":
+            api_input.append({"role": "assistant", "content": text})
+            continue
+        content_parts: list[dict[str, str]] = []
+        if index == 0:
+            file_id = st.session_state.get("med_note_file_id")
+            pasted_note = st.session_state.get("med_pasted_note", "")
+            if file_id:
+                content_parts.append({"type": "input_file", "file_id": file_id})
+            if pasted_note:
+                content_parts.append({"type": "input_text", "text": "PATIENT NOTE:\n\n" + pasted_note})
+        content_parts.append({"type": "input_text", "text": text})
+        api_input.append({"role": "user", "content": content_parts})
+    return api_input
 
-    request_text = (
-        "Extract the CURRENT medication list from the uploaded or pasted note "
-        "and perform the medication interaction and safety review described in "
-        "the instructions."
-    )
 
-    if additional_request.strip():
-        request_text += "\n\nAdditional focus: " + additional_request.strip()
-
-    content.append({"type": "input_text", "text": request_text})
-    return [{"role": "user", "content": content}]
+def run_response(client: OpenAI) -> str:
+    response = client.responses.create(model=MODEL, instructions=SYSTEM_INSTRUCTIONS, input=build_api_input())
+    return response.output_text or "No response was returned."
 
 
 password_gate()
+initialize_state()
 
 with st.sidebar:
     st.markdown("### Medication Interaction Review")
-    st.caption(
-        "Upload or paste one patient note. The tool extracts active "
-        "medications and produces a clinician-facing interaction review."
-    )
-
+    st.caption("Upload or paste one patient note, receive the initial review, then ask follow-up questions about the same patient and medication list.")
+    if st.session_state.get("med_chat_messages"):
+        if st.button("Clear review and start over", use_container_width=True):
+            clear_review()
+            st.rerun()
     if st.button("Sign out", use_container_width=True):
+        clear_review()
         st.session_state.clear()
         st.rerun()
 
 st.title("💊 Medication Interaction Review")
-st.caption(
-    "Upload a patient note or paste the note below, then run the review."
-)
+st.caption("Upload or paste one patient note. After the initial analysis, continue with follow-up questions in the chat.")
+st.warning("Clinician review required. Confirm the active medication list and verify important findings against current prescribing information or a pharmacist.")
 
-st.warning(
-    "Clinician review required. Confirm the active medication list and verify "
-    "important findings against current prescribing information or a pharmacist."
-)
-
-uploaded_note = st.file_uploader(
-    "Upload patient note",
-    type=SUPPORTED_FILE_TYPES,
-    accept_multiple_files=False,
-    help="Supported formats: PDF, DOCX, TXT, and RTF.",
-)
-
-st.markdown("**Or paste the note**")
-
-pasted_note = st.text_area(
-    "Paste patient note",
-    height=320,
-    placeholder=(
-        "Paste the progress note, medication-management note, or current "
-        "medication section here..."
-    ),
-    label_visibility="collapsed",
-)
-
-additional_request = st.text_input(
-    "Optional focus",
-    placeholder="Example: Focus on QT risk, serotonin burden, or sedation.",
-)
-
-has_note = bool(uploaded_note) or bool(pasted_note.strip())
-
-if st.button(
-    "Run medication interaction review",
-    type="primary",
-    use_container_width=True,
-    disabled=not has_note,
-):
-    client = get_client()
-    temporary_file_id: str | None = None
-
-    try:
-        if uploaded_note is not None:
-            with st.spinner("Uploading and reading the patient note..."):
-                temporary_file_id = upload_note(client, uploaded_note)
-
-        api_input = build_input(
-            pasted_note=pasted_note,
-            file_id=temporary_file_id,
-            additional_request=additional_request,
-        )
-
-        with st.spinner(
-            "Extracting current medications and reviewing interactions..."
-        ):
-            response = client.responses.create(
-                model=MODEL,
-                instructions=SYSTEM_INSTRUCTIONS,
-                input=api_input,
-            )
-
-        st.session_state["medication_review_result"] = (
-            response.output_text
-            or "No review was returned. Please verify the note and try again."
-        )
-
-    except Exception as exc:
-        st.error(f"Medication review failed:\n\n{exc}")
-
-    finally:
-        delete_note(client, temporary_file_id)
-
-if st.session_state.get("medication_review_result"):
-    st.divider()
-    st.markdown(st.session_state["medication_review_result"])
-
-    st.download_button(
-        "Download review as text",
-        data=st.session_state["medication_review_result"],
-        file_name="medication_interaction_review.txt",
-        mime="text/plain",
-        use_container_width=True,
+if not st.session_state["med_chat_messages"]:
+    uploaded_note = st.file_uploader("Upload patient note", type=SUPPORTED_FILE_TYPES, accept_multiple_files=False, help="Supported formats: PDF, DOCX, TXT, and RTF.")
+    st.markdown("**Or paste the note**")
+    pasted_note = st.text_area("Paste patient note", height=320, placeholder="Paste the progress note, medication-management note, or current medication section here...", label_visibility="collapsed")
+    additional_request = st.text_input("Optional focus", placeholder="Example: Focus on QT risk, serotonin burden, or sedation.")
+    has_note = bool(uploaded_note) or bool(pasted_note.strip())
+    if st.button("Run medication interaction review", type="primary", use_container_width=True, disabled=not has_note):
+        client = get_client()
+        try:
+            if uploaded_note is not None:
+                with st.spinner("Uploading and reading the patient note..."):
+                    st.session_state["med_note_file_id"] = upload_note(client, uploaded_note)
+                    st.session_state["med_note_name"] = uploaded_note.name
+            st.session_state["med_pasted_note"] = pasted_note.strip()
+            initial_request = "Extract the CURRENT medication list from the uploaded or pasted note and perform the complete medication interaction and safety review described in the instructions."
+            if additional_request.strip():
+                initial_request += "\n\nAdditional focus: " + additional_request.strip()
+            st.session_state["med_chat_messages"].append({"role": "user", "content": initial_request, "display_content": "Run medication interaction review"})
+            with st.spinner("Extracting current medications and reviewing interactions..."):
+                answer = run_response(client)
+            st.session_state["med_chat_messages"].append({"role": "assistant", "content": answer})
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Medication review failed:\n\n{exc}")
+else:
+    if st.session_state.get("med_note_name"):
+        st.caption(f"Source note: {st.session_state['med_note_name']}")
+    elif st.session_state.get("med_pasted_note"):
+        st.caption("Source note: pasted text")
+    for message in st.session_state["med_chat_messages"]:
+        with st.chat_message(message["role"]):
+            st.markdown(message.get("display_content", message["content"]))
+    follow_up = st.chat_input("Ask a follow-up about the medications or interaction review...")
+    if follow_up:
+        client = get_client()
+        st.session_state["med_chat_messages"].append({"role": "user", "content": follow_up})
+        with st.chat_message("user"):
+            st.markdown(follow_up)
+        with st.chat_message("assistant"):
+            with st.spinner("Reviewing..."):
+                try:
+                    answer = run_response(client)
+                except Exception as exc:
+                    answer = f"Medication review failed:\n\n{exc}"
+            st.markdown(answer)
+        st.session_state["med_chat_messages"].append({"role": "assistant", "content": answer})
+    full_transcript = "\n\n".join(
+        f"{message['role'].upper()}:\n{message.get('display_content', message['content'])}"
+        for message in st.session_state["med_chat_messages"]
     )
-
-    if st.button("Clear review", use_container_width=True):
-        st.session_state.pop("medication_review_result", None)
-        st.rerun()
+    st.download_button("Download review and chat", data=full_transcript, file_name="medication_interaction_review_chat.txt", mime="text/plain", use_container_width=True)
