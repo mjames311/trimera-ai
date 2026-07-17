@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import streamlit as st
 from openai import OpenAI
@@ -15,12 +16,40 @@ TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 SYSTEM_INSTRUCTIONS = (
-    "You are Ask Trimera, an internal healthcare operations assistant. "
-    "Be concise and accurate. Use the complete conversation history to understand "
-    "follow-up questions, references, corrections, and requested details. "
-    "Do not claim to have analyzed an uploaded file unless its actual contents "
-    "were provided to you."
+    "You are Ask Trimera, an internal healthcare operations assistant for an "
+    "outpatient psychiatry practice. Be concise, accurate, and practical. "
+    "Use the complete conversation history, including prior questions, answers, "
+    "corrections, and attached files, to understand follow-up requests. "
+    "When analyzing files, clearly distinguish what the documents show from any "
+    "inference. Do not claim a file contains information that is not present."
 )
+
+ALLOWED_FILE_TYPES = [
+    "pdf",
+    "doc",
+    "docx",
+    "xls",
+    "xlsx",
+    "csv",
+    "tsv",
+    "txt",
+    "rtf",
+    "odt",
+    "ppt",
+    "pptx",
+]
+
+MAX_FILES_PER_MESSAGE = 20
+MAX_TOTAL_UPLOAD_MB = 100
+
+
+def get_client() -> OpenAI:
+    """Create an authenticated OpenAI client."""
+    if not API_KEY:
+        st.error("OPENAI_API_KEY not configured.")
+        st.stop()
+
+    return OpenAI(api_key=API_KEY)
 
 
 def password_gate() -> None:
@@ -35,7 +64,7 @@ def password_gate() -> None:
     st.title("Ask Trimera")
     password = st.text_input("Password", type="password")
 
-    if st.button("Sign in"):
+    if st.button("Sign in", type="primary"):
         if password == TEST_PASSWORD:
             st.session_state["authenticated"] = True
             st.rerun()
@@ -45,28 +74,183 @@ def password_gate() -> None:
     st.stop()
 
 
-def build_api_history() -> list[dict[str, str]]:
-    """
-    Convert all saved chat messages into Responses API input.
+def initialize_state() -> None:
+    """Initialize all chat-related Streamlit session state."""
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = []
 
-    This is the key change: every user and assistant message from the current
-    conversation is sent on every request, so follow-up messages retain context.
+    if "uploaded_openai_file_ids" not in st.session_state:
+        st.session_state["uploaded_openai_file_ids"] = []
+
+    if "uploader_version" not in st.session_state:
+        st.session_state["uploader_version"] = 0
+
+
+def delete_uploaded_openai_files() -> None:
     """
-    return [
-        {
-            "role": message["role"],
-            "content": message["content"],
-        }
-        for message in st.session_state["messages"]
-        if message.get("role") in {"user", "assistant"}
-        and message.get("content")
-    ]
+    Best-effort cleanup of files uploaded to OpenAI during this chat session.
+
+    Cleanup errors are intentionally ignored so they never prevent the user from
+    clearing the conversation or signing out.
+    """
+    file_ids = st.session_state.get("uploaded_openai_file_ids", [])
+
+    if not API_KEY or not file_ids:
+        return
+
+    try:
+        client = OpenAI(api_key=API_KEY)
+
+        for file_id in file_ids:
+            try:
+                client.files.delete(file_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def clear_conversation() -> None:
+    """Delete uploaded API files and reset the current conversation."""
+    delete_uploaded_openai_files()
+    st.session_state["messages"] = []
+    st.session_state["uploaded_openai_file_ids"] = []
+    st.session_state["uploader_version"] = (
+        st.session_state.get("uploader_version", 0) + 1
+    )
+
+
+def sign_out() -> None:
+    """Delete uploaded API files and clear the signed-in Streamlit session."""
+    delete_uploaded_openai_files()
+    st.session_state.clear()
+
+
+def validate_uploads(uploaded_files: list[Any]) -> None:
+    """Stop with a clear message when upload limits are exceeded."""
+    if len(uploaded_files) > MAX_FILES_PER_MESSAGE:
+        st.error(
+            f"Please attach no more than {MAX_FILES_PER_MESSAGE} files in one message."
+        )
+        st.stop()
+
+    total_bytes = sum(file.size for file in uploaded_files)
+    max_bytes = MAX_TOTAL_UPLOAD_MB * 1024 * 1024
+
+    if total_bytes > max_bytes:
+        st.error(
+            f"The combined upload is too large. Keep the total under "
+            f"{MAX_TOTAL_UPLOAD_MB} MB."
+        )
+        st.stop()
+
+
+def upload_files_to_openai(
+    client: OpenAI,
+    uploaded_files: list[Any],
+) -> list[dict[str, str]]:
+    """
+    Upload Streamlit files to the OpenAI Files API.
+
+    Returns metadata used both for the API request and the visible chat history.
+    """
+    uploaded_metadata: list[dict[str, str]] = []
+
+    for uploaded_file in uploaded_files:
+        uploaded_file.seek(0)
+
+        created_file = client.files.create(
+            file=(
+                uploaded_file.name,
+                uploaded_file.getvalue(),
+                uploaded_file.type or "application/octet-stream",
+            ),
+            purpose="user_data",
+        )
+
+        uploaded_metadata.append(
+            {
+                "file_id": created_file.id,
+                "name": uploaded_file.name,
+            }
+        )
+
+        st.session_state["uploaded_openai_file_ids"].append(created_file.id)
+
+    return uploaded_metadata
+
+
+def build_responses_input() -> list[dict[str, Any]]:
+    """
+    Convert the complete saved chat into Responses API input.
+
+    Each user message may contain both its original text and any files attached
+    to that turn. This lets later follow-up questions continue to reference files
+    uploaded earlier in the same conversation.
+    """
+    api_input: list[dict[str, Any]] = []
+
+    for message in st.session_state["messages"]:
+        role = message.get("role")
+        text = message.get("content", "")
+
+        if role == "assistant":
+            if text:
+                api_input.append(
+                    {
+                        "role": "assistant",
+                        "content": text,
+                    }
+                )
+            continue
+
+        if role != "user":
+            continue
+
+        content_parts: list[dict[str, str]] = []
+
+        for attachment in message.get("attachments", []):
+            file_id = attachment.get("file_id")
+            if file_id:
+                content_parts.append(
+                    {
+                        "type": "input_file",
+                        "file_id": file_id,
+                    }
+                )
+
+        if text:
+            content_parts.append(
+                {
+                    "type": "input_text",
+                    "text": text,
+                }
+            )
+
+        if content_parts:
+            api_input.append(
+                {
+                    "role": "user",
+                    "content": content_parts,
+                }
+            )
+
+    return api_input
+
+
+def render_message(message: dict[str, Any]) -> None:
+    """Render one saved chat message and its attachment names."""
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+        attachments = message.get("attachments", [])
+        if attachments:
+            names = ", ".join(item["name"] for item in attachments)
+            st.caption(f"Attached: {names}")
 
 
 password_gate()
-
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
+initialize_state()
 
 with st.sidebar:
     st.title("Ask Trimera")
@@ -78,77 +262,74 @@ with st.sidebar:
     )
 
     if st.button("Clear conversation", use_container_width=True):
-        st.session_state["messages"] = []
+        clear_conversation()
         st.rerun()
 
     if st.button("Sign out", use_container_width=True):
-        st.session_state.clear()
+        sign_out()
         st.rerun()
 
 st.title("💬 Ask Trimera")
-st.caption("Upload files and ask questions.")
-
-uploaded = st.file_uploader(
-    "Attach a document",
-    type=["pdf", "txt", "csv", "png", "jpg", "jpeg", "docx", "xlsx"],
-    accept_multiple_files=False,
+st.caption(
+    "Ask questions or attach multiple PDF, Word, Excel, CSV, text, or "
+    "PowerPoint files."
 )
 
-# Re-display the complete current conversation after every Streamlit rerun.
-for message in st.session_state["messages"]:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+uploaded_files = st.file_uploader(
+    "Attach files",
+    type=ALLOWED_FILE_TYPES,
+    accept_multiple_files=True,
+    key=f"ask_trimera_uploader_{st.session_state['uploader_version']}",
+    help=(
+        f"Attach up to {MAX_FILES_PER_MESSAGE} files per message, with a combined "
+        f"size under {MAX_TOTAL_UPLOAD_MB} MB."
+    ),
+)
+
+for saved_message in st.session_state["messages"]:
+    render_message(saved_message)
 
 question = st.chat_input("Ask Trimera...")
 
 if question:
-    if not API_KEY:
-        st.error("OPENAI_API_KEY not configured.")
-        st.stop()
+    client = get_client()
+    current_files = uploaded_files or []
+    validate_uploads(current_files)
 
-    # Save the user's visible message first.
-    st.session_state["messages"].append(
-        {
-            "role": "user",
-            "content": question,
-        }
-    )
+    uploaded_metadata: list[dict[str, str]] = []
 
-    with st.chat_message("user"):
-        st.markdown(question)
-        if uploaded:
-            st.caption(f"Attached: {uploaded.name}")
+    if current_files:
+        with st.spinner(f"Uploading {len(current_files)} file(s)..."):
+            try:
+                uploaded_metadata = upload_files_to_openai(
+                    client=client,
+                    uploaded_files=current_files,
+                )
+            except Exception as exc:
+                st.error(f"File upload failed:\n\n{exc}")
+                st.stop()
 
-    # Include attachment context in the current API turn without changing the
-    # visible chat text. This preserves the existing app behavior.
-    api_history = build_api_history()
+    user_message = {
+        "role": "user",
+        "content": question,
+        "attachments": uploaded_metadata,
+    }
+    st.session_state["messages"].append(user_message)
+    render_message(user_message)
 
-    if uploaded:
-        api_history[-1] = {
-            "role": "user",
-            "content": (
-                f"{question}\n\n"
-                f"The user attached a file named '{uploaded.name}'. "
-                "The file name is available, but its contents have not been sent "
-                "to the model by this implementation. Explain that limitation if "
-                "the user asks you to analyze the attachment."
-            ),
-        }
-
-    request_kwargs = {
+    request_kwargs: dict[str, Any] = {
         "model": MODEL,
-        "input": api_history,
+        "input": build_responses_input(),
         "instructions": SYSTEM_INSTRUCTIONS,
     }
 
-    # Web search availability depends on the selected model and OpenAI account.
+    # Web search availability depends on the selected model and account.
     if use_web:
         request_kwargs["tools"] = [{"type": "web_search"}]
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
-                client = OpenAI(api_key=API_KEY)
                 response = client.responses.create(**request_kwargs)
                 answer = response.output_text or "No response was returned."
             except Exception as exc:
@@ -156,10 +337,14 @@ if question:
 
         st.markdown(answer)
 
-    # Save the assistant reply so it is included in the next API request.
     st.session_state["messages"].append(
         {
             "role": "assistant",
             "content": answer,
         }
     )
+
+    # Reset the uploader after sending so the same files are not accidentally
+    # attached to the next message.
+    st.session_state["uploader_version"] += 1
+    st.rerun()
