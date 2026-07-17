@@ -464,6 +464,58 @@ def append_claims_to_tracker(
         skipped_existing,
     )
 
+
+def tracker_copy_table(
+    claims_df: pd.DataFrame,
+    appeal_date_value: date,
+    include_header: bool = False,
+) -> str:
+    columns = [
+        "Patient Name",
+        "DOS",
+        "Original CPT(s)",
+        "Paid CPT(s)",
+        "Expected Payment",
+        "Actual Payment",
+        "Loss $",
+        "Appeal Submitted?",
+        "Appeal Date",
+        "Outcome",
+        "Recovered $",
+        "Net Outstanding Loss",
+        "Insurance Type",
+    ]
+
+    rows = [columns] if include_header else []
+
+    for _, claim in claims_df.iterrows():
+        expected = round(float(claim.get("Expected Payment", 0) or 0), 2)
+        actual = round(float(claim.get("Actual Payment", 0) or 0), 2)
+        loss = round(expected - actual, 2)
+
+        rows.append(
+            [
+                str(claim.get("Patient", "")).strip(),
+                str(claim.get("DOS", "")).strip(),
+                str(claim.get("Original CPT(s) Billed", "")).replace(", ", " + "),
+                str(claim.get("Downcoded To", "")).replace(", ", " + "),
+                f"{expected:.2f}",
+                f"{actual:.2f}",
+                f"{loss:.2f}",
+                "Yes",
+                f"{appeal_date_value.month}/{appeal_date_value.day}/{appeal_date_value.year}",
+                "Pending",
+                "0.00",
+                f"{loss:.2f}",
+                "",
+            ]
+        )
+
+    return "\n".join(
+        "\t".join(str(value) for value in row)
+        for row in rows
+    )
+
 def password_gate() -> None:
     if not TEST_PASSWORD:
         st.warning("TRIMERA_QA_PASSWORD is not configured.")
@@ -1062,6 +1114,74 @@ if report_files and template_file and note_files:
 
     st.subheader("Review matches")
     st.dataframe(pd.DataFrame(match_rows), use_container_width=True)
+
+    st.subheader("Copy rows into your real tracker")
+    st.caption(
+        "Click inside the box, press Ctrl+A and Ctrl+C, then paste into the "
+        "first empty row of Column A in Excel. Each value will fall into the "
+        "correct tracker column automatically."
+    )
+
+    include_tracker_header = st.checkbox(
+        "Include tracker column headers",
+        value=False,
+        help="Leave this off when pasting below the existing tracker rows.",
+    )
+
+    tracker_copy_text = tracker_copy_table(
+        claims_df,
+        appeal_date,
+        include_header=include_tracker_header,
+    )
+
+    st.text_area(
+        "Excel-ready tracker rows",
+        value=tracker_copy_text,
+        height=min(500, max(180, 34 * (len(claims_df) + 1))),
+        help=(
+            "Tab-delimited text matching Columns A through M of the BCBS "
+            "Downcoding Tracker."
+        ),
+    )
+
+    tracker_export_df = pd.DataFrame(
+        {
+            "Patient Name": claims_df["Patient"],
+            "DOS": claims_df["DOS"],
+            "Original CPT(s)": claims_df[
+                "Original CPT(s) Billed"
+            ].str.replace(", ", " + ", regex=False),
+            "Paid CPT(s)": claims_df[
+                "Downcoded To"
+            ].str.replace(", ", " + ", regex=False),
+            "Expected Payment": claims_df["Expected Payment"].round(2),
+            "Actual Payment": claims_df["Actual Payment"].round(2),
+            "Loss $": (
+                claims_df["Expected Payment"]
+                - claims_df["Actual Payment"]
+            ).round(2),
+            "Appeal Submitted?": "Yes",
+            "Appeal Date": appeal_date.strftime("%m/%d/%Y"),
+            "Outcome": "Pending",
+            "Recovered $": 0.00,
+            "Net Outstanding Loss": (
+                claims_df["Expected Payment"]
+                - claims_df["Actual Payment"]
+            ).round(2),
+            "Insurance Type": "",
+        }
+    )
+
+    st.download_button(
+        "Download tracker rows as CSV",
+        data=tracker_export_df.to_csv(index=False),
+        file_name=(
+            f"BCBS_TRACKER_ROWS_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        ),
+        mime="text/csv",
+        use_container_width=True,
+    )
 
     st.caption(
         "Confirm each encounter note below. Claims without a matching note are "
