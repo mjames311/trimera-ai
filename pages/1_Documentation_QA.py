@@ -28,6 +28,12 @@ REFERENCE_FILES = {
     "BCBS": ["cpcp051-12-22-2025.pdf"],
     "UNITED_COMMUNITY": ["UHCCP-Evaluation-Management-Policy-(R5007).pdf"],
     "DOWNCODING_RISK": ["OH.PP.066.pdf"],
+    "TMS_CMS": ["Article - Billing and Coding_ Transcranial Magnetic Stimulation (A57528).pdf"],
+    "TMS_UNITED": ["transcranial-magnetic-stimulation. united.pdf"],
+    "SPRAVATO_MANUFACTURER": ["SPRAVATO_Access_Coding_and_Reimbursement_Digital_Guide.pdf"],
+    "SPRAVATO_UNITED": ["PA-Med-Nec-Spravato.united.pdf"],
+    "TRD_BCBS": ["major-depressive-disorder-doc-code-guideline.pdf"],
+    "TRD_INTERNAL": ["ai.rules.trd.docx"],
 }
 
 PAYER_AUTHORITY_ORDER = {
@@ -52,6 +58,8 @@ E_M_RULES = {
     "99215": {"mdm": "high", "time": 40, "patient": "established"},
 }
 PSYCHOTHERAPY_RULES = {"90833": 16, "90836": 38, "90838": 53}
+TMS_CODES = {"90867", "90868", "90869"}
+SPRAVATO_CODES = {"G2082", "G2083"}
 
 FACT_EXTRACTION_PROMPT = """
 You are a documentation fact extractor. Do not decide whether any code is supported.
@@ -80,6 +88,36 @@ Return valid JSON only, with no markdown fences, using this exact schema:
   "longitudinal_evidence": [],
   "base_em_code_or_level_explicit": "yes|no|unclear",
   "prolonged_time_separately_attributable_to_em": "yes|no|unclear",
+  "diagnosis_documented": "yes|no|unclear",
+  "medical_necessity_documented": "yes|no|unclear",
+  "baseline_symptom_scale_documented": "yes|no|unclear",
+  "informed_consent_documented": "yes|no|unclear",
+  "tms_session_number_documented": "yes|no|unclear",
+  "tms_motor_threshold_documented": "yes|no|unclear",
+  "tms_motor_threshold_method_documented": "yes|no|unclear",
+  "tms_coil_placement_documented": "yes|no|unclear",
+  "tms_intensity_documented": "yes|no|unclear",
+  "tms_pulses_or_protocol_documented": "yes|no|unclear",
+  "tms_treatment_delivered_documented": "yes|no|unclear",
+  "tms_tolerance_documented": "yes|no|unclear",
+  "tms_adverse_effects_documented": "yes|no|unclear",
+  "tms_safety_assessment_documented": "yes|no|unclear",
+  "tms_repeat_mt_reason_documented": "yes|no|unclear",
+  "tms_prior_and_new_mt_compared": "yes|no|unclear",
+  "tms_plan_documented": "yes|no|unclear",
+  "spravato_indication_documented": "yes|no|unclear",
+  "spravato_rems_documented": "yes|no|unclear",
+  "spravato_dose_mg": null,
+  "spravato_self_administered_under_supervision": "yes|no|unclear",
+  "spravato_pre_dose_blood_pressure": "yes|no|unclear",
+  "spravato_observation_minutes": null,
+  "spravato_periodic_vitals_documented": "yes|no|unclear",
+  "spravato_sedation_assessment_documented": "yes|no|unclear",
+  "spravato_dissociation_assessment_documented": "yes|no|unclear",
+  "spravato_respiratory_monitoring_documented": "yes|no|unclear",
+  "spravato_discharge_status_documented": "yes|no|unclear",
+  "spravato_transportation_documented": "yes|no|unclear",
+  "spravato_followup_plan_documented": "yes|no|unclear",
   "important_ambiguities": []
 }
 
@@ -89,6 +127,8 @@ Rules:
 - Do not count time for another separately reported service as E/M time.
 - For MDM, apply the 2-of-3 framework, but extract the level rather than deciding the billed code.
 - Prescription drug management may support moderate risk when explicitly documented.
+- For TMS, distinguish initial mapping (90867), routine subsequent treatment (90868), and repeat motor-threshold determination (90869).
+- For Spravato, extract the administered dose and the documented monitoring/discharge elements. Do not assume a 2-hour observation from appointment timestamps alone.
 - Keep evidence short and quote or closely paraphrase the note.
 """.strip()
 
@@ -231,6 +271,10 @@ def query_terms(codes: list[dict], payer: str) -> list[str]:
             terms.update(["G2211", "longitudinal", "continuing focal point"])
         elif code in {"99417", "G2212"}:
             terms.update([code, "prolonged", "total time", "99205", "99215"])
+        elif code in TMS_CODES:
+            terms.update([code, "transcranial magnetic stimulation", "motor threshold", "coil placement", "treatment parameters", "tolerance", "adverse effects"])
+        elif code in SPRAVATO_CODES:
+            terms.update([code, "Spravato", "esketamine", "REMS", "56 mg", "84 mg", "two hours", "observation", "blood pressure", "sedation", "dissociation", "discharge"])
     terms.add(payer)
     return sorted(term for term in terms if term)
 
@@ -374,6 +418,85 @@ def evaluate_prolonged(code: str, units: int, facts: dict, payer: str, codes: li
     return {"status": status, "reasons": [f"Base code: {base}; required total E/M time: {required_time}; documented: {total_time if total_time is not None else 'not stated'}."], "deficiencies": deficiencies}
 
 
+def _checklist_result(items: list[tuple[str, bool, bool]]) -> dict:
+    """items: (label, present, essential)."""
+    missing_essential = [label for label, present, essential in items if essential and not present]
+    missing_other = [label for label, present, essential in items if not essential and not present]
+    present_count = sum(1 for _, present, _ in items if present)
+    if missing_essential:
+        status = "NOT SUPPORTED"
+    elif missing_other:
+        status = "BORDERLINE"
+    else:
+        status = "SUPPORTED"
+    reasons = [f"{present_count} of {len(items)} checklist elements were documented."]
+    deficiencies = missing_essential + missing_other
+    return {"status": status, "reasons": reasons, "deficiencies": deficiencies}
+
+
+def evaluate_tms(code: str, facts: dict) -> dict:
+    common = [
+        ("Active diagnosis was not documented.", yes(facts.get("diagnosis_documented")), True),
+        ("Medical necessity for TMS was not documented.", yes(facts.get("medical_necessity_documented")), True),
+        ("Patient tolerance was not documented.", yes(facts.get("tms_tolerance_documented")), True),
+        ("Adverse effects or absence of adverse effects was not documented.", yes(facts.get("tms_adverse_effects_documented")), False),
+        ("The treatment plan or continuation plan was not documented.", yes(facts.get("tms_plan_documented")), False),
+    ]
+    if code == "90867":
+        items = common + [
+            ("Motor-threshold determination was not documented.", yes(facts.get("tms_motor_threshold_documented")), True),
+            ("The motor-threshold method was not documented.", yes(facts.get("tms_motor_threshold_method_documented")), False),
+            ("Coil placement or motor hotspot was not documented.", yes(facts.get("tms_coil_placement_documented")), True),
+            ("Treatment intensity was not documented.", yes(facts.get("tms_intensity_documented")), True),
+            ("The selected protocol or pulse parameters were not documented.", yes(facts.get("tms_pulses_or_protocol_documented")), True),
+            ("Baseline symptom severity was not documented.", yes(facts.get("baseline_symptom_scale_documented")), False),
+            ("Informed consent was not documented.", yes(facts.get("informed_consent_documented")), False),
+        ]
+    elif code == "90868":
+        items = common + [
+            ("Session number was not documented.", yes(facts.get("tms_session_number_documented")), False),
+            ("Current coil placement was not documented.", yes(facts.get("tms_coil_placement_documented")), True),
+            ("Current treatment intensity was not documented.", yes(facts.get("tms_intensity_documented")), True),
+            ("Pulses or treatment protocol were not documented.", yes(facts.get("tms_pulses_or_protocol_documented")), True),
+            ("Treatment delivery/completion was not documented.", yes(facts.get("tms_treatment_delivered_documented")), True),
+            ("A relevant safety assessment was not documented.", yes(facts.get("tms_safety_assessment_documented")), False),
+        ]
+    else:
+        items = common + [
+            ("The clinical reason for repeat motor-threshold determination was not documented.", yes(facts.get("tms_repeat_mt_reason_documented")), True),
+            ("Repeat motor-threshold determination was not documented.", yes(facts.get("tms_motor_threshold_documented")), True),
+            ("The prior and new thresholds were not compared.", yes(facts.get("tms_prior_and_new_mt_compared")), False),
+            ("Updated treatment intensity was not documented.", yes(facts.get("tms_intensity_documented")), True),
+            ("Updated parameters or continuation plan were not documented.", yes(facts.get("tms_plan_documented")), True),
+        ]
+    return _checklist_result(items)
+
+
+def evaluate_spravato(code: str, facts: dict) -> dict:
+    dose = facts.get("spravato_dose_mg")
+    expected = 56 if code == "G2082" else 84
+    dose_match = isinstance(dose, (int, float)) and int(dose) == expected
+    observation = facts.get("spravato_observation_minutes")
+    observation_met = isinstance(observation, (int, float)) and observation >= 120
+    items = [
+        ("The Spravato indication or continued medical necessity was not documented.", yes(facts.get("spravato_indication_documented")) or yes(facts.get("medical_necessity_documented")), True),
+        (f"The documented dose did not establish {expected} mg for {code}.", dose_match, True),
+        ("Self-administration under healthcare-provider supervision was not documented.", yes(facts.get("spravato_self_administered_under_supervision")), True),
+        ("Pre-dose blood pressure was not documented.", yes(facts.get("spravato_pre_dose_blood_pressure")), True),
+        ("At least 120 minutes of observation was not explicitly documented.", observation_met, True),
+        ("Periodic vital-sign monitoring was not documented.", yes(facts.get("spravato_periodic_vitals_documented")), False),
+        ("Sedation assessment was not documented.", yes(facts.get("spravato_sedation_assessment_documented")), False),
+        ("Dissociation assessment was not documented.", yes(facts.get("spravato_dissociation_assessment_documented")), False),
+        ("Respiratory monitoring or assessment was not documented.", yes(facts.get("spravato_respiratory_monitoring_documented")), False),
+        ("Clinical discharge status was not documented.", yes(facts.get("spravato_discharge_status_documented")), True),
+        ("Transportation/no-driving instructions were not documented.", yes(facts.get("spravato_transportation_documented")), False),
+        ("Follow-up plan was not documented.", yes(facts.get("spravato_followup_plan_documented")), False),
+    ]
+    result = _checklist_result(items)
+    result["reasons"].append(f"Documented dose: {dose if dose is not None else 'not stated'} mg; observation: {observation if observation is not None else 'not stated'} minutes.")
+    return result
+
+
 def evaluate_codes(codes: list[dict], facts: dict, payer: str) -> dict[str, dict]:
     findings = {}
     for entry in codes:
@@ -386,6 +509,10 @@ def evaluate_codes(codes: list[dict], facts: dict, payer: str) -> dict[str, dict
             finding = evaluate_g2211(facts, payer, codes)
         elif code in {"99417", "G2212"}:
             finding = evaluate_prolonged(code, units, facts, payer, codes)
+        elif code in TMS_CODES:
+            finding = evaluate_tms(code, facts)
+        elif code in SPRAVATO_CODES:
+            finding = evaluate_spravato(code, facts)
         else:
             finding = {"status": "BORDERLINE", "reasons": ["This code is not yet in the deterministic rules engine."], "deficiencies": ["The result requires manual review against the governing excerpts."]}
         finding["units"] = units
