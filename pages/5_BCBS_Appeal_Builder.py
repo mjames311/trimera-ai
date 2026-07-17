@@ -2,8 +2,10 @@ import io
 import os
 import re
 import zipfile
+from copy import deepcopy
 from datetime import date, datetime
 from typing import Any
+from xml.etree import ElementTree as ET
 
 import pandas as pd
 import streamlit as st
@@ -45,6 +47,15 @@ AMOUNT_TO_CODE = {
 }
 
 E_M_CODES = {"99214", "99215"}
+
+EXPECTED_ALLOWED_BY_CODE = {
+    "99214": 116.47,
+    "99215": 155.96,
+    "90833": 67.21,
+    "90836": 88.54,
+    "G2211": 13.51,
+    "99417 x5": 193.57,
+}
 
 APPEAL_BODY_1 = (
     "On the date of service listed above, the CPT E/M code for the service "
@@ -103,6 +114,355 @@ APPEAL_THANKS = (
     "have any questions regarding this claim."
 )
 
+
+
+XLSX_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+ET.register_namespace("", XLSX_NS)
+ET.register_namespace("r", REL_NS)
+
+
+def excel_serial(value: Any) -> float:
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        raise ValueError(f"Could not convert date: {value}")
+    origin = pd.Timestamp("1899-12-30")
+    return float((parsed.normalize() - origin).days)
+
+
+def column_letters(cell_ref: str) -> str:
+    match = re.match(r"([A-Z]+)", cell_ref or "")
+    return match.group(1) if match else ""
+
+
+def cell_text(
+    cell: ET.Element,
+    shared_strings: list[str],
+) -> str:
+    cell_type = cell.attrib.get("t")
+    value_node = cell.find(f"{{{XLSX_NS}}}v")
+
+    if cell_type == "inlineStr":
+        texts = cell.findall(f".//{{{XLSX_NS}}}t")
+        return "".join(node.text or "" for node in texts)
+
+    if value_node is None:
+        return ""
+
+    raw = value_node.text or ""
+
+    if cell_type == "s":
+        try:
+            return shared_strings[int(raw)]
+        except (ValueError, IndexError):
+            return raw
+
+    return raw
+
+
+def read_shared_strings(
+    archive: zipfile.ZipFile,
+) -> list[str]:
+    if "xl/sharedStrings.xml" not in archive.namelist():
+        return []
+
+    root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+    strings = []
+
+    for item in root.findall(f"{{{XLSX_NS}}}si"):
+        texts = item.findall(f".//{{{XLSX_NS}}}t")
+        strings.append("".join(node.text or "" for node in texts))
+
+    return strings
+
+
+def find_sheet_path(
+    archive: zipfile.ZipFile,
+    sheet_name: str,
+) -> str:
+    workbook_root = ET.fromstring(archive.read("xl/workbook.xml"))
+    rels_root = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+
+    rel_targets = {
+        rel.attrib["Id"]: rel.attrib["Target"]
+        for rel in rels_root.findall(f"{{{PKG_REL_NS}}}Relationship")
+    }
+
+    for sheet in workbook_root.findall(
+        f".//{{{XLSX_NS}}}sheet"
+    ):
+        if sheet.attrib.get("name") != sheet_name:
+            continue
+
+        rel_id = sheet.attrib.get(f"{{{REL_NS}}}id")
+        target = rel_targets.get(rel_id, "")
+        target = target.lstrip("/")
+
+        if target.startswith("xl/"):
+            return target
+
+        return f"xl/{target}"
+
+    raise ValueError(f"Worksheet not found: {sheet_name}")
+
+
+def make_inline_cell(
+    ref: str,
+    value: str,
+    style_id: str | None = None,
+) -> ET.Element:
+    attributes = {"r": ref, "t": "inlineStr"}
+    if style_id is not None:
+        attributes["s"] = style_id
+
+    cell = ET.Element(f"{{{XLSX_NS}}}c", attributes)
+    inline = ET.SubElement(cell, f"{{{XLSX_NS}}}is")
+    text = ET.SubElement(inline, f"{{{XLSX_NS}}}t")
+
+    if value.startswith(" ") or value.endswith(" "):
+        text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+
+    text.text = value
+    return cell
+
+
+def make_number_cell(
+    ref: str,
+    value: float | int,
+    style_id: str | None = None,
+) -> ET.Element:
+    attributes = {"r": ref}
+    if style_id is not None:
+        attributes["s"] = style_id
+
+    cell = ET.Element(f"{{{XLSX_NS}}}c", attributes)
+    value_node = ET.SubElement(cell, f"{{{XLSX_NS}}}v")
+    value_node.text = str(value)
+    return cell
+
+
+def make_formula_cell(
+    ref: str,
+    formula: str,
+    style_id: str | None = None,
+) -> ET.Element:
+    attributes = {"r": ref}
+    if style_id is not None:
+        attributes["s"] = style_id
+
+    cell = ET.Element(f"{{{XLSX_NS}}}c", attributes)
+    formula_node = ET.SubElement(cell, f"{{{XLSX_NS}}}f")
+    formula_node.text = formula
+    return cell
+
+
+def append_claims_to_tracker(
+    tracker_bytes: bytes,
+    claims_df: pd.DataFrame,
+    appeal_date_value: date,
+) -> tuple[bytes, pd.DataFrame, list[str]]:
+    input_buffer = io.BytesIO(tracker_bytes)
+    output_buffer = io.BytesIO()
+
+    added_rows = []
+    skipped_existing = []
+
+    with zipfile.ZipFile(input_buffer, "r") as source_archive:
+        shared_strings = read_shared_strings(source_archive)
+        sheet_path = find_sheet_path(
+            source_archive,
+            "BCBS Downcoding Tracker",
+        )
+
+        sheet_root = ET.fromstring(source_archive.read(sheet_path))
+        sheet_data = sheet_root.find(f"{{{XLSX_NS}}}sheetData")
+
+        if sheet_data is None:
+            raise ValueError("Tracker worksheet has no sheetData section.")
+
+        rows = sheet_data.findall(f"{{{XLSX_NS}}}row")
+
+        existing_keys = set()
+        last_data_row_number = 1
+        template_row = None
+
+        for row in rows:
+            row_number = int(row.attrib.get("r", "0"))
+            values_by_column = {}
+
+            for cell in row.findall(f"{{{XLSX_NS}}}c"):
+                col = column_letters(cell.attrib.get("r", ""))
+                values_by_column[col] = cell_text(cell, shared_strings)
+
+            patient = normalize_name(values_by_column.get("A", ""))
+            dos_raw = values_by_column.get("B", "")
+            original_codes = values_by_column.get("C", "").strip()
+
+            if patient:
+                last_data_row_number = max(last_data_row_number, row_number)
+                template_row = row
+
+                try:
+                    dos_key = format_date(float(dos_raw))
+                except Exception:
+                    dos_key = dos_raw
+
+                existing_keys.add(
+                    (
+                        patient,
+                        dos_key,
+                        original_codes.lower().replace(",", " +"),
+                    )
+                )
+
+        if template_row is None:
+            raise ValueError("Could not identify a populated tracker row.")
+
+        template_styles = {}
+        for cell in template_row.findall(f"{{{XLSX_NS}}}c"):
+            col = column_letters(cell.attrib.get("r", ""))
+            template_styles[col] = cell.attrib.get("s")
+
+        next_row = last_data_row_number + 1
+
+        for _, claim in claims_df.iterrows():
+            patient = str(claim["Patient"]).strip()
+            dos = str(claim["DOS"]).strip()
+            original = str(claim["Original CPT(s) Billed"]).replace(", ", " + ")
+            paid = str(claim["Downcoded To"]).replace(", ", " + ")
+
+            key = (
+                normalize_name(patient),
+                dos,
+                original.lower().replace(",", " +"),
+            )
+
+            if key in existing_keys:
+                skipped_existing.append(
+                    f"{patient} - {dos} - already in tracker"
+                )
+                continue
+
+            row_attributes = {
+                key: value
+                for key, value in template_row.attrib.items()
+                if key != "r"
+            }
+            row_attributes["r"] = str(next_row)
+            new_row = ET.Element(
+                f"{{{XLSX_NS}}}row",
+                row_attributes,
+            )
+
+            values = {
+                "A": ("text", patient),
+                "B": ("number", excel_serial(dos)),
+                "C": ("text", original),
+                "D": ("text", paid),
+                "E": ("number", float(claim["Expected Payment"])),
+                "F": ("number", float(claim["Actual Payment"])),
+                "G": (
+                    "formula",
+                    f'IF(OR(E{next_row}="",F{next_row}=""),"",E{next_row}-F{next_row})',
+                ),
+                "H": ("text", "Yes"),
+                "I": ("number", excel_serial(appeal_date_value)),
+                "J": ("text", "Pending"),
+                "K": ("number", 0),
+                "L": (
+                    "formula",
+                    f'IF(G{next_row}="","",MAX(G{next_row}-K{next_row},0))',
+                ),
+                "M": ("text", ""),
+            }
+
+            for col in "ABCDEFGHIJKLM":
+                ref = f"{col}{next_row}"
+                kind, value = values[col]
+                style_id = template_styles.get(col)
+
+                if kind == "text":
+                    cell = make_inline_cell(ref, str(value), style_id)
+                elif kind == "number":
+                    cell = make_number_cell(ref, value, style_id)
+                else:
+                    cell = make_formula_cell(ref, str(value), style_id)
+
+                new_row.append(cell)
+
+            sheet_data.append(new_row)
+            existing_keys.add(key)
+
+            added_rows.append(
+                {
+                    "Patient Name": patient,
+                    "DOS": dos,
+                    "Original CPT(s)": original,
+                    "Paid CPT(s)": paid,
+                    "Expected Payment": float(claim["Expected Payment"]),
+                    "Actual Payment": float(claim["Actual Payment"]),
+                    "Appeal Submitted?": "Yes",
+                    "Appeal Date": (
+                        f"{appeal_date_value.month}/"
+                        f"{appeal_date_value.day}/"
+                        f"{appeal_date_value.year}"
+                    ),
+                    "Outcome": "Pending",
+                    "Claim Number": claim["Claim Number"],
+                    "Source Report(s)": claim.get("Source Report(s)", ""),
+                }
+            )
+
+            next_row += 1
+
+        dimension = sheet_root.find(f"{{{XLSX_NS}}}dimension")
+        if dimension is not None and added_rows:
+            dimension.set("ref", f"A1:M{next_row - 1}")
+
+        updated_sheet_xml = ET.tostring(
+            sheet_root,
+            encoding="utf-8",
+            xml_declaration=True,
+        )
+
+        workbook_xml = ET.fromstring(source_archive.read("xl/workbook.xml"))
+        calc_pr = workbook_xml.find(f"{{{XLSX_NS}}}calcPr")
+        if calc_pr is None:
+            calc_pr = ET.SubElement(workbook_xml, f"{{{XLSX_NS}}}calcPr")
+
+        calc_pr.set("fullCalcOnLoad", "1")
+        calc_pr.set("forceFullCalc", "1")
+        calc_pr.set("calcMode", "auto")
+
+        updated_workbook_xml = ET.tostring(
+            workbook_xml,
+            encoding="utf-8",
+            xml_declaration=True,
+        )
+
+        with zipfile.ZipFile(
+            output_buffer,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+        ) as output_archive:
+            for item in source_archive.infolist():
+                if item.filename == sheet_path:
+                    output_archive.writestr(item, updated_sheet_xml)
+                elif item.filename == "xl/workbook.xml":
+                    output_archive.writestr(item, updated_workbook_xml)
+                else:
+                    output_archive.writestr(
+                        item,
+                        source_archive.read(item.filename),
+                    )
+
+    return (
+        output_buffer.getvalue(),
+        pd.DataFrame(added_rows),
+        skipped_existing,
+    )
 
 def password_gate() -> None:
     if not TEST_PASSWORD:
@@ -235,6 +595,20 @@ def build_claim_summary(report_df: pd.DataFrame) -> pd.DataFrame:
 
         paid_codes = downcoded_codes(original)
 
+        expected_payment = round(
+            sum(EXPECTED_ALLOWED_BY_CODE.get(code, 0.0) for code in original),
+            2,
+        )
+
+        actual_payment = round(
+            sum(money_to_float(value) for value in group["Paid"].tolist())
+            + sum(
+                money_to_float(value)
+                for value in group["Patient Responsible"].tolist()
+            ),
+            2,
+        )
+
         rows.append(
             {
                 "Patient": str(patient).strip(),
@@ -243,6 +617,8 @@ def build_claim_summary(report_df: pd.DataFrame) -> pd.DataFrame:
                 "Original CPT(s) Billed": ", ".join(original),
                 "Downcoded To": ", ".join(paid_codes),
                 "Original Codes List": original,
+                "Expected Payment": expected_payment,
+                "Actual Payment": actual_payment,
                 "Source Report(s)": ", ".join(
                     sorted(
                         {
@@ -540,9 +916,9 @@ with st.sidebar:
 
 st.title("📨 BCBS Downcoding Appeal Packet Builder")
 st.caption(
-    "Upload one or more BCBS remittance reports, the appeal template, and "
-    "all encounter-note PDFs for the batch. The tool combines the reports, "
-    "matches only the notes provided, fills each appeal, and merges the packet."
+    "Upload one or more BCBS remittance reports, the appeal template, all "
+    "encounter-note PDFs, and optionally the current tracker. The tool builds "
+    "the appeal packets and returns an updated tracker in the same run."
 )
 
 report_files = st.file_uploader(
@@ -560,6 +936,15 @@ note_files = st.file_uploader(
     "3. Upload encounter-note PDFs",
     type=["pdf"],
     accept_multiple_files=True,
+)
+
+tracker_file = st.file_uploader(
+    "4. Upload current BCBS tracker (optional)",
+    type=["xlsx"],
+    help=(
+        "Upload the current tracker to receive a new copy with all newly "
+        "detected downcoded claims appended automatically."
+    ),
 )
 
 appeal_date = st.date_input(
@@ -796,5 +1181,54 @@ if report_files and template_file and note_files:
                 use_container_width=True,
             )
 
+        if tracker_file is not None:
+            try:
+                updated_tracker, tracker_added, tracker_skipped = (
+                    append_claims_to_tracker(
+                        tracker_file.getvalue(),
+                        claims_df,
+                        appeal_date,
+                    )
+                )
+
+                st.divider()
+                st.subheader("Updated BCBS tracker")
+
+                if not tracker_added.empty:
+                    st.success(
+                        f"Added {len(tracker_added)} new claim(s) to the tracker."
+                    )
+                    st.dataframe(
+                        tracker_added,
+                        use_container_width=True,
+                    )
+                else:
+                    st.info(
+                        "No new tracker rows were added because all detected "
+                        "claims were already present."
+                    )
+
+                st.download_button(
+                    "Download updated tracker",
+                    data=updated_tracker,
+                    file_name=(
+                        f"BCBSTX_DC_TRACKER_UPDATED_"
+                        f"{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+                    ),
+                    mime=(
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet"
+                    ),
+                    use_container_width=True,
+                )
+
+                if tracker_skipped:
+                    with st.expander("Tracker rows skipped as duplicates"):
+                        for item in tracker_skipped:
+                            st.write(f"- {item}")
+
+            except Exception as exc:
+                st.error(f"Could not update the tracker: {exc}")
+
         if skipped:
-            st.warning("Skipped: " + "; ".join(skipped))
+            st.warning("Appeal packets skipped: " + "; ".join(skipped))
