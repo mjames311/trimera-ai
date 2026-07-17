@@ -183,16 +183,21 @@ def password_gate() -> None:
 
 @st.cache_data(show_spinner=False)
 def read_pdf(path_str: str) -> str:
+    """Read a reference PDF only when a QA run actually needs it."""
     path = Path(path_str)
+
+    # PyPDF is materially faster for the policy files in this app.
     try:
-        with pdfplumber.open(path) as pdf:
-            text = "\n\n".join((page.extract_text() or "") for page in pdf.pages)
+        reader = PdfReader(path)
+        text = "\n\n".join(page.extract_text() or "" for page in reader.pages)
         if text.strip():
             return text
     except Exception:
         pass
-    reader = PdfReader(path)
-    return "\n\n".join(page.extract_text() or "" for page in reader.pages)
+
+    # Fallback for PDFs whose layout PyPDF cannot read well.
+    with pdfplumber.open(path) as pdf:
+        return "\n\n".join((page.extract_text() or "") for page in pdf.pages)
 
 
 @st.cache_data(show_spinner=False)
@@ -232,17 +237,63 @@ def split_text(text: str, source_label: str, chunk_size: int = 5000) -> list[dic
     return chunks
 
 
+def authority_order(payer: str, codes: list[dict]) -> list[str]:
+    """Return only the source groups needed for this specific review."""
+    order = list(PAYER_AUTHORITY_ORDER.get(payer, ["AMA", "CMS"]))
+    code_set = {entry["code"] for entry in codes}
+
+    if code_set & TMS_CODES:
+        if payer in {
+            "UnitedHealthcare Community Plan / Medicaid",
+            "UnitedHealthcare / Optum Commercial",
+        }:
+            order.append("TMS_UNITED")
+        order.extend(["TMS_CMS", "TRD_INTERNAL"])
+
+    if code_set & SPRAVATO_CODES:
+        if payer in {
+            "UnitedHealthcare Community Plan / Medicaid",
+            "UnitedHealthcare / Optum Commercial",
+        }:
+            order.append("SPRAVATO_UNITED")
+        if payer == "BCBS":
+            order.append("TRD_BCBS")
+        order.extend(["SPRAVATO_MANUFACTURER", "TRD_INTERNAL"])
+
+    order.extend(["TRIMERA", "DOWNCODING_RISK"])
+
+    # Preserve priority while removing duplicates.
+    return list(dict.fromkeys(order))
+
+
 @st.cache_data(show_spinner=False)
-def load_reference_library() -> dict[str, list[dict]]:
+def load_reference_library(
+    payer: str,
+    code_signature: tuple[str, ...],
+) -> dict[str, list[dict]]:
+    """Load only references relevant to the selected payer and codes."""
+    codes = [{"code": code} for code in code_signature]
+    categories = authority_order(payer, codes)
     library: dict[str, list[dict]] = {}
-    for category, filenames in REFERENCE_FILES.items():
+
+    for category in categories:
+        if category == "TRIMERA":
+            library[category] = (
+                split_text(read_document(MANUAL_PATH), "TRIMERA")
+                if MANUAL_PATH.exists()
+                else []
+            )
+            continue
+
         category_chunks = []
-        for filename in filenames:
+        for filename in REFERENCE_FILES.get(category, []):
             path = REFERENCE_DIR / filename
             if path.exists():
-                category_chunks.extend(split_text(read_document(path), category))
+                category_chunks.extend(
+                    split_text(read_document(path), category)
+                )
         library[category] = category_chunks
-    library["TRIMERA"] = split_text(read_document(MANUAL_PATH), "TRIMERA") if MANUAL_PATH.exists() else []
+
     return library
 
 
@@ -292,7 +343,7 @@ def score_chunk(chunk: dict, terms: list[str]) -> float:
 
 
 def governing_excerpts(library: dict[str, list[dict]], payer: str, codes: list[dict], limit_per_category: int = 5) -> tuple[str, list[str]]:
-    order = PAYER_AUTHORITY_ORDER.get(payer, ["AMA", "CMS"]) + ["TRIMERA", "DOWNCODING_RISK"]
+    order = authority_order(payer, codes)
     terms = query_terms(codes, payer)
     sections, used_sources = [], []
     for category in order:
@@ -576,11 +627,9 @@ with st.sidebar:
 st.title("📋 Trimera Documentation QA")
 st.caption("Grounded review using payer, AMA, CMS, and Trimera authority documents.")
 
-try:
-    reference_library = load_reference_library()
-except Exception as exc:
-    st.error(f"Could not load the reference library: {exc}")
-    st.stop()
+# Reference files are intentionally not opened here. Loading them at page
+# startup made login appear frozen. They are loaded lazily after the user
+# clicks Run documentation QA.
 
 payer = st.selectbox("Payer", ["Not specified", "Medicare", "UnitedHealthcare Community Plan / Medicaid", "UnitedHealthcare / Optum Commercial", "BCBS", "Aetna", "Cigna", "Humana", "Other"])
 codes_raw = st.text_input("Intended billing", placeholder="99214, 90833, G2211  OR  99215, 99417 x5")
@@ -608,7 +657,21 @@ if st.button("Run documentation QA", type="primary", use_container_width=True):
     if not OPENAI_API_KEY:
         st.error("OPENAI_API_KEY is not configured.")
         st.stop()
-    excerpts, used_sources = governing_excerpts(reference_library, payer, codes)
+    with st.spinner("Loading the relevant authority documents..."):
+        try:
+            reference_library = load_reference_library(
+                payer,
+                tuple(entry["code"] for entry in codes),
+            )
+        except Exception as exc:
+            st.error(f"Could not load the reference library: {exc}")
+            st.stop()
+
+    excerpts, used_sources = governing_excerpts(
+        reference_library,
+        payer,
+        codes,
+    )
     if not excerpts:
         st.error("No governing reference excerpts were found. Confirm the files exist in the reference folder with the expected filenames.")
         st.stop()
