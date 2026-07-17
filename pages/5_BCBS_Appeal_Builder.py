@@ -243,6 +243,18 @@ def build_claim_summary(report_df: pd.DataFrame) -> pd.DataFrame:
                 "Original CPT(s) Billed": ", ".join(original),
                 "Downcoded To": ", ".join(paid_codes),
                 "Original Codes List": original,
+                "Source Report(s)": ", ".join(
+                    sorted(
+                        {
+                            str(value).strip()
+                            for value in group.get(
+                                "Source Report",
+                                pd.Series(dtype=str),
+                            ).dropna().tolist()
+                            if str(value).strip()
+                        }
+                    )
+                ),
             }
         )
 
@@ -521,20 +533,22 @@ with st.sidebar:
         st.rerun()
 
     st.info(
-        "This tool builds one appeal packet per downcoded claim and flags "
-        "anything it cannot match safely."
+        "This tool combines multiple remittance reports, builds one appeal "
+        "packet per unique downcoded claim, and flags anything it cannot match safely."
     )
 
 
 st.title("📨 BCBS Downcoding Appeal Packet Builder")
 st.caption(
-    "Upload the BCBS report, appeal template, and encounter-note PDFs. "
-    "The tool fills each appeal and merges it with the matching note."
+    "Upload one or more BCBS remittance reports, the appeal template, and "
+    "all encounter-note PDFs for the batch. The tool combines the reports, "
+    "matches only the notes provided, fills each appeal, and merges the packet."
 )
 
-report_file = st.file_uploader(
-    "1. Upload BCBS claim report",
+report_files = st.file_uploader(
+    "1. Upload one or more BCBS remittance reports",
     type=["csv"],
+    accept_multiple_files=True,
 )
 
 template_file = st.file_uploader(
@@ -553,17 +567,56 @@ appeal_date = st.date_input(
     value=date.today(),
 )
 
-if report_file and template_file and note_files:
+if report_files and template_file and note_files:
     try:
-        report_df = pd.read_csv(report_file)
+        report_frames = []
+
+        for report_file in report_files:
+            frame = pd.read_csv(report_file)
+            frame["Source Report"] = report_file.name
+            report_frames.append(frame)
+
+        report_df = pd.concat(
+            report_frames,
+            ignore_index=True,
+            sort=False,
+        )
+
+        # Prevent the same claim from being built twice when it appears in
+        # more than one remittance report.
+        report_df = report_df.drop_duplicates()
+
         claims_df = build_claim_summary(report_df)
+
+        if not claims_df.empty:
+            claims_df = claims_df.drop_duplicates(
+                subset=[
+                    "Patient",
+                    "DOS",
+                    "Claim Number",
+                    "Original CPT(s) Billed",
+                    "Downcoded To",
+                ]
+            ).reset_index(drop=True)
+
     except Exception as exc:
-        st.error(f"Could not read the claim report: {exc}")
+        st.error(f"Could not read the remittance reports: {exc}")
         st.stop()
 
     if claims_df.empty:
-        st.warning("No downcoded 99214 or 99215 claims were found in the report.")
+        st.warning(
+            "No downcoded 99214 or 99215 claims were found across the uploaded reports."
+        )
         st.stop()
+
+    st.success(
+        f"Combined {len(report_files)} remittance report(s) and identified "
+        f"{len(claims_df)} unique downcoded claim(s)."
+    )
+
+    with st.expander("Uploaded remittance reports"):
+        for report_file in report_files:
+            st.write(f"- {report_file.name}")
 
     note_data = []
     for note_file in note_files:
@@ -626,8 +679,9 @@ if report_file and template_file and note_files:
     st.dataframe(pd.DataFrame(match_rows), use_container_width=True)
 
     st.caption(
-        "Confirm each encounter note below. The tool will not build a packet "
-        "for a claim left as 'No note selected.'"
+        "Confirm each encounter note below. Claims without a matching note are "
+        "left as 'No note selected' and skipped; all confidently matched claims "
+        "can be built together."
     )
 
     selected_matches = {}
@@ -714,6 +768,7 @@ if report_file and template_file and note_files:
                             "Claim Number": row["Claim Number"],
                             "Original CPT(s) Billed": row["Original CPT(s) Billed"],
                             "Downcoded To": row["Downcoded To"],
+                            "Source Report(s)": row.get("Source Report(s)", ""),
                             "Encounter Note": selected_matches.get(index, ""),
                             "Packet Built": (
                                 "YES"
