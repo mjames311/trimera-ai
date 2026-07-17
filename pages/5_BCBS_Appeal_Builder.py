@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import zipfile
@@ -36,6 +37,8 @@ st.set_page_config(
 
 APP_TITLE = "BCBS Appeal Packet Builder"
 TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
+API_KEY = os.getenv("OPENAI_API_KEY", "")
+MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 
 AMOUNT_TO_CODE = {
     25.00: "G2211",
@@ -694,6 +697,218 @@ def extract_pdf_text(file_bytes: bytes) -> str:
     return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
+def clean_json_text(value: str) -> str:
+    """Remove common Markdown fences before parsing model JSON output."""
+    value = (value or "").strip()
+    if value.startswith("```"):
+        value = re.sub(r"^```(?:json)?\s*", "", value, flags=re.IGNORECASE)
+        value = re.sub(r"\s*```$", "", value)
+    return value.strip()
+
+
+def normalize_report_dataframe(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalize common remittance-report column-name variations."""
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+
+    frame = frame.copy()
+    frame.columns = [str(column).strip() for column in frame.columns]
+
+    aliases = {
+        "patient": "Patient",
+        "patient name": "Patient",
+        "member": "Patient",
+        "member name": "Patient",
+        "date of service": "Date of Service",
+        "dos": "Date of Service",
+        "service date": "Date of Service",
+        "insurance claim number": "Insurance Claim Number",
+        "claim number": "Insurance Claim Number",
+        "claim #": "Insurance Claim Number",
+        "claim id": "Insurance Claim Number",
+        "billed": "Billed",
+        "billed amount": "Billed",
+        "charge": "Billed",
+        "charge amount": "Billed",
+        "paid": "Paid",
+        "paid amount": "Paid",
+        "payment": "Paid",
+        "patient responsible": "Patient Responsible",
+        "patient responsibility": "Patient Responsible",
+        "patient resp": "Patient Responsible",
+        "note": "Note",
+        "notes": "Note",
+        "remark": "Note",
+        "remarks": "Note",
+        "status note": "Note",
+    }
+
+    rename_map = {}
+    for column in frame.columns:
+        normalized = re.sub(r"\s+", " ", column.lower()).strip()
+        if normalized in aliases:
+            rename_map[column] = aliases[normalized]
+
+    frame = frame.rename(columns=rename_map)
+
+    # Combine duplicated normalized columns rather than leaving ambiguous names.
+    if frame.columns.duplicated().any():
+        combined = {}
+        for column in dict.fromkeys(frame.columns):
+            matching = frame.loc[:, frame.columns == column]
+            combined[column] = matching.bfill(axis=1).iloc[:, 0]
+        frame = pd.DataFrame(combined)
+
+    for required_column in ["Paid", "Patient Responsible", "Note"]:
+        if required_column not in frame.columns:
+            frame[required_column] = 0.0 if required_column != "Note" else ""
+
+    return frame
+
+
+def read_excel_report(file_bytes: bytes, filename: str) -> pd.DataFrame:
+    """Read every populated worksheet from an uploaded Excel workbook."""
+    try:
+        workbook = pd.ExcelFile(io.BytesIO(file_bytes))
+    except Exception as exc:
+        raise ValueError(
+            f"Could not open Excel report '{filename}'. Save legacy .xls files "
+            "as .xlsx and try again. Details: {exc}"
+        ) from exc
+
+    frames = []
+    for sheet_name in workbook.sheet_names:
+        sheet = pd.read_excel(workbook, sheet_name=sheet_name)
+        sheet = normalize_report_dataframe(sheet)
+        if not sheet.empty:
+            sheet["Source Sheet"] = sheet_name
+            frames.append(sheet)
+
+    if not frames:
+        raise ValueError(f"Excel report '{filename}' did not contain readable rows.")
+
+    return pd.concat(frames, ignore_index=True, sort=False)
+
+
+def extract_report_with_openai(
+    file_bytes: bytes,
+    filename: str,
+    mime_type: str,
+) -> pd.DataFrame:
+    """Use OpenAI file analysis to convert PDF or Word reports into rows."""
+    if not API_KEY:
+        raise ValueError(
+            "OPENAI_API_KEY is required to read PDF or Word remittance reports."
+        )
+
+    client = OpenAI(api_key=API_KEY)
+    uploaded_file = None
+
+    prompt = """
+Extract every claim/service line from this BCBS remittance report.
+Return ONLY valid JSON with this exact shape:
+{
+  "rows": [
+    {
+      "Patient": "patient name",
+      "Date of Service": "date",
+      "Insurance Claim Number": "claim number",
+      "Billed": 0.00,
+      "Paid": 0.00,
+      "Patient Responsible": 0.00,
+      "Note": "all denial, adjustment, remark, and level-of-care text for the line"
+    }
+  ]
+}
+
+Rules:
+- Include one object per service line, not merely one object per patient.
+- Preserve repeated claim numbers across different service lines.
+- Use numeric values for Billed, Paid, and Patient Responsible.
+- Put all downcoding language, including code 186 or 'Level of care change', in Note.
+- Do not invent missing values. Use an empty string for missing text and 0 for missing money.
+- Do not include commentary outside the JSON.
+""".strip()
+
+    try:
+        uploaded_file = client.files.create(
+            file=(filename, file_bytes, mime_type or "application/octet-stream"),
+            purpose="user_data",
+        )
+
+        response = client.responses.create(
+            model=MODEL,
+            instructions=(
+                "You extract structured healthcare remittance data accurately. "
+                "Never omit service lines and never fabricate values."
+            ),
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_file", "file_id": uploaded_file.id},
+                        {"type": "input_text", "text": prompt},
+                    ],
+                }
+            ],
+        )
+
+        payload = json.loads(clean_json_text(response.output_text))
+        rows = payload.get("rows", [])
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("No claim rows were extracted from the document.")
+
+        return normalize_report_dataframe(pd.DataFrame(rows))
+
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"The AI could not return readable structured data for '{filename}'."
+        ) from exc
+    finally:
+        if uploaded_file is not None:
+            try:
+                client.files.delete(uploaded_file.id)
+            except Exception:
+                pass
+
+
+def read_remittance_report(report_file: Any) -> pd.DataFrame:
+    """Read CSV, Excel, PDF, or Word remittance reports into one schema."""
+    filename = report_file.name
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    file_bytes = report_file.getvalue()
+
+    if extension == "csv":
+        try:
+            frame = pd.read_csv(io.BytesIO(file_bytes))
+        except UnicodeDecodeError:
+            frame = pd.read_csv(io.BytesIO(file_bytes), encoding="latin-1")
+        return normalize_report_dataframe(frame)
+
+    if extension in {"xlsx", "xls"}:
+        return read_excel_report(file_bytes, filename)
+
+    if extension == "pdf":
+        return extract_report_with_openai(
+            file_bytes,
+            filename,
+            report_file.type or "application/pdf",
+        )
+
+    if extension in {"docx", "doc"}:
+        return extract_report_with_openai(
+            file_bytes,
+            filename,
+            report_file.type
+            or "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    raise ValueError(
+        f"Unsupported remittance report type: {filename}. "
+        "Use CSV, XLSX, XLS, PDF, DOCX, or DOC."
+    )
+
+
 def date_variants(dos: str) -> list[str]:
     parsed = pd.to_datetime(dos, errors="coerce")
     if pd.isna(parsed):
@@ -968,15 +1183,20 @@ with st.sidebar:
 
 st.title("📨 BCBS Downcoding Appeal Packet Builder")
 st.caption(
-    "Upload one or more BCBS remittance reports, the appeal template, all "
-    "encounter-note PDFs, and optionally the current tracker. The tool builds "
+    "Upload one or more BCBS remittance reports in CSV, Excel, PDF, or Word "
+    "format, the appeal template, all encounter-note PDFs, and optionally the "
+    "current tracker. The tool builds "
     "the appeal packets and returns an updated tracker in the same run."
 )
 
 report_files = st.file_uploader(
     "1. Upload one or more BCBS remittance reports",
-    type=["csv"],
+    type=["csv", "xlsx", "xls", "pdf", "docx", "doc"],
     accept_multiple_files=True,
+    help=(
+        "Upload any combination of CSV, Excel, PDF, or Word remittance "
+        "reports. PDF and Word extraction uses the configured OpenAI model."
+    ),
 )
 
 template_file = st.file_uploader(
@@ -1009,7 +1229,8 @@ if report_files and template_file and note_files:
         report_frames = []
 
         for report_file in report_files:
-            frame = pd.read_csv(report_file)
+            with st.spinner(f"Reading {report_file.name}..."):
+                frame = read_remittance_report(report_file)
             frame["Source Report"] = report_file.name
             report_frames.append(frame)
 
