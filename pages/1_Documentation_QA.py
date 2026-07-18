@@ -11,6 +11,8 @@ from openai import OpenAI
 from pypdf import PdfReader
 from rapidfuzz import fuzz
 
+from theme import apply_trimera_theme, page_header
+
 st.set_page_config(page_title="Trimera Documentation QA", page_icon="📋", layout="wide")
 
 APP_TITLE = "Trimera Documentation QA"
