@@ -11,15 +11,288 @@ from openai import OpenAI
 from pypdf import PdfReader
 from rapidfuzz import fuzz
 
-from theme import apply_trimera_theme, page_header
-
 st.set_page_config(
     page_title="Trimera Documentation QA",
     page_icon="📋",
     layout="wide",
 )
 
-apply_trimera_theme()
+
+
+def apply_page_styling() -> None:
+    """Apply a self-contained Trimera visual theme to this page."""
+    st.markdown(
+        """
+        <style>
+        :root {
+            --trimera-teal: #075b63;
+            --trimera-deep-teal: #043f46;
+            --trimera-blue: #28a9d6;
+            --trimera-green: #79b52d;
+            --trimera-gold: #c9a51b;
+            --trimera-bg: #f4f8f9;
+            --trimera-card: #ffffff;
+            --trimera-text: #15363b;
+            --trimera-muted: #657d82;
+            --trimera-border: #d7e4e7;
+        }
+
+        /* Main app background and width */
+        [data-testid="stAppViewContainer"] {
+            background:
+                radial-gradient(circle at 95% 0%, rgba(40,169,214,.12), transparent 34rem),
+                linear-gradient(180deg, #f8fbfc 0%, var(--trimera-bg) 100%);
+        }
+
+        [data-testid="stMainBlockContainer"] {
+            max-width: 1180px;
+            padding-top: 2.2rem;
+            padding-bottom: 4rem;
+        }
+
+        /* Top toolbar */
+        [data-testid="stHeader"] {
+            background: rgba(248,251,252,.88);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(7,91,99,.08);
+        }
+
+        /* Sidebar */
+        [data-testid="stSidebar"] {
+            background:
+                linear-gradient(180deg, var(--trimera-deep-teal) 0%, var(--trimera-teal) 100%);
+            border-right: 1px solid rgba(255,255,255,.08);
+        }
+
+        [data-testid="stSidebar"] * {
+            color: #ffffff !important;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] code {
+            color: #e9fbff !important;
+            background: rgba(255,255,255,.10);
+        }
+
+        [data-testid="stSidebarNav"] a {
+            margin: .18rem .55rem;
+            padding: .65rem .75rem;
+            border-radius: 11px;
+            transition: background-color .15s ease, transform .15s ease;
+        }
+
+        [data-testid="stSidebarNav"] a:hover {
+            background: rgba(255,255,255,.10);
+            transform: translateX(2px);
+        }
+
+        [data-testid="stSidebarNav"] a[aria-current="page"] {
+            background: rgba(255,255,255,.16);
+            box-shadow: inset 4px 0 0 var(--trimera-green);
+        }
+
+        /* Typography */
+        html, body, [class*="css"] {
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        h1, h2, h3 {
+            color: var(--trimera-text);
+            letter-spacing: -.025em;
+        }
+
+        h1 {
+            font-weight: 760;
+        }
+
+        p, label, [data-testid="stMarkdownContainer"] {
+            color: var(--trimera-text);
+        }
+
+        [data-testid="stCaptionContainer"] {
+            color: var(--trimera-muted) !important;
+        }
+
+        /* Branded page header */
+        .trimera-page-header {
+            position: relative;
+            overflow: hidden;
+            margin: 0 0 1.4rem 0;
+            padding: 1.55rem 1.65rem;
+            border: 1px solid rgba(7,91,99,.13);
+            border-radius: 20px;
+            background:
+                linear-gradient(110deg, rgba(255,255,255,.98), rgba(221,244,251,.82));
+            box-shadow: 0 14px 34px rgba(4,63,70,.08);
+        }
+
+        .trimera-page-header::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 7px;
+            background: linear-gradient(
+                180deg,
+                var(--trimera-green),
+                var(--trimera-blue),
+                var(--trimera-teal)
+            );
+        }
+
+        .trimera-page-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: .45rem;
+            margin-bottom: .5rem;
+            color: var(--trimera-teal);
+            font-size: .78rem;
+            font-weight: 750;
+            letter-spacing: .09em;
+            text-transform: uppercase;
+        }
+
+        .trimera-page-title {
+            margin: 0;
+            color: var(--trimera-text);
+            font-size: clamp(1.8rem, 3vw, 2.55rem);
+            font-weight: 780;
+            line-height: 1.12;
+            letter-spacing: -.04em;
+        }
+
+        .trimera-page-subtitle {
+            margin: .55rem 0 0 0;
+            color: var(--trimera-muted);
+            font-size: 1.02rem;
+        }
+
+        /* Controls */
+        div[data-baseweb="select"] > div,
+        .stTextInput input,
+        .stTextArea textarea {
+            border: 1px solid var(--trimera-border) !important;
+            border-radius: 12px !important;
+            background: #ffffff !important;
+            box-shadow: 0 1px 2px rgba(4,63,70,.03);
+        }
+
+        .stTextInput input:focus,
+        .stTextArea textarea:focus {
+            border-color: var(--trimera-blue) !important;
+            box-shadow: 0 0 0 3px rgba(40,169,214,.14) !important;
+        }
+
+        [data-testid="stFileUploader"] {
+            padding: .8rem;
+            border: 1.5px dashed rgba(40,169,214,.75);
+            border-radius: 16px;
+            background: rgba(255,255,255,.78);
+        }
+
+        /* Buttons */
+        .stButton > button,
+        .stDownloadButton > button {
+            min-height: 45px;
+            border: 1px solid var(--trimera-teal);
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--trimera-teal), var(--trimera-deep-teal));
+            color: #ffffff !important;
+            font-weight: 700;
+            box-shadow: 0 7px 18px rgba(7,91,99,.16);
+            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+        }
+
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            border-color: var(--trimera-teal);
+            color: #ffffff !important;
+            transform: translateY(-1px);
+            filter: brightness(1.06);
+            box-shadow: 0 10px 22px rgba(7,91,99,.22);
+        }
+
+        .stButton > button:focus,
+        .stDownloadButton > button:focus {
+            color: #ffffff !important;
+            box-shadow: 0 0 0 3px rgba(40,169,214,.22);
+        }
+
+        /* Alerts and containers */
+        [data-testid="stAlert"] {
+            border-radius: 14px;
+            border-width: 1px;
+        }
+
+        [data-testid="stExpander"] {
+            overflow: hidden;
+            border: 1px solid var(--trimera-border);
+            border-radius: 14px;
+            background: rgba(255,255,255,.78);
+        }
+
+        [data-testid="stMetric"] {
+            padding: 1rem;
+            border: 1px solid var(--trimera-border);
+            border-radius: 16px;
+            background: var(--trimera-card);
+            box-shadow: 0 8px 24px rgba(4,63,70,.06);
+        }
+
+        /* Results */
+        .trimera-section-label {
+            margin-top: 1.25rem;
+            margin-bottom: .75rem;
+            color: var(--trimera-teal);
+            font-size: .82rem;
+            font-weight: 800;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+
+        [data-testid="stChatMessage"] {
+            border: 1px solid var(--trimera-border);
+            border-radius: 16px;
+            background: rgba(255,255,255,.88);
+            box-shadow: 0 5px 18px rgba(4,63,70,.05);
+        }
+
+        hr {
+            border-color: var(--trimera-border);
+            margin: 2rem 0;
+        }
+
+        /* Mobile */
+        @media (max-width: 700px) {
+            [data-testid="stMainBlockContainer"] {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+
+            .trimera-page-header {
+                padding: 1.25rem 1.2rem;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_page_header() -> None:
+    st.markdown(
+        """
+        <div class="trimera-page-header">
+            <div class="trimera-page-kicker">Trimera AI · Clinical Intelligence</div>
+            <div class="trimera-page-title">📋 Documentation QA</div>
+            <p class="trimera-page-subtitle">
+                Grounded review using payer, AMA, CMS, and Trimera authority documents.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 APP_TITLE = "Trimera Documentation QA"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
@@ -620,6 +893,7 @@ def reset_qa_session() -> None:
         st.session_state.pop(key, None)
 
 
+apply_page_styling()
 password_gate()
 
 with st.sidebar:
@@ -632,11 +906,7 @@ with st.sidebar:
     st.write(f"Model: `{MODEL}`")
     st.info("Code-level outcomes are determined by the fixed rules engine.")
 
-page_header(
-    icon="📋",
-    title="Trimera Documentation QA",
-    subtitle="Grounded review using payer, AMA, CMS, and Trimera authority documents.",
-)
+render_page_header()
 
 # Reference files are intentionally not opened here. Loading them at page
 # startup made login appear frozen. They are loaded lazily after the user
