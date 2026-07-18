@@ -54,7 +54,7 @@ def apply_trimera_ui() -> None:
         .trimera-topbar {
             position: fixed;
             top: 0;
-            left: 0;
+            left: 330px;
             right: 0;
             z-index: 1000;
             height: 74px;
@@ -75,15 +75,16 @@ def apply_trimera_ui() -> None:
         .trimera-topbar-brand {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             color: white;
-            font-size: 1.55rem;
-            font-weight: 750;
-            letter-spacing: -.02em;
+            font-size: 1rem;
+            font-weight: 760;
+            letter-spacing: .04em;
+            text-transform: uppercase;
         }
 
         .trimera-topbar-brand img {
-            height: 50px;
+            height: 28px;
             width: auto;
             object-fit: contain;
             filter: brightness(0) invert(1);
@@ -110,9 +111,27 @@ def apply_trimera_ui() -> None:
 
         /* Sidebar */
         [data-testid="stSidebar"] {
+            width: 330px !important;
+            min-width: 330px !important;
+            max-width: 330px !important;
             background: #ffffff;
             border-right: 1px solid #e4ebf0;
             padding-top: 82px;
+            overflow: visible !important;
+        }
+
+        [data-testid="stSidebar"] > div:first-child {
+            width: 330px !important;
+            min-width: 330px !important;
+            max-width: 330px !important;
+        }
+
+        [data-testid="stSidebarContent"] {
+            width: 330px !important;
+            min-width: 330px !important;
+            max-width: 330px !important;
+            padding-left: 14px;
+            padding-right: 14px;
         }
 
         [data-testid="stSidebar"]::before {
@@ -150,11 +169,23 @@ def apply_trimera_ui() -> None:
         }
 
         [data-testid="stSidebarNav"] a {
-            margin: .2rem .7rem;
-            padding: .68rem .82rem;
+            margin: .2rem .45rem;
+            padding: .72rem .82rem;
             border-radius: 12px;
             font-weight: 620;
             transition: background-color .15s ease, transform .15s ease;
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            line-height: 1.25;
+        }
+
+        [data-testid="stSidebarNav"] a span,
+        [data-testid="stSidebarNav"] a p {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            max-width: none !important;
         }
 
         [data-testid="stSidebarNav"] a:hover {
@@ -168,10 +199,10 @@ def apply_trimera_ui() -> None:
         }
 
         [data-testid="stSidebar"] [data-testid="stButton"] button {
-            background: #ffffff;
+            background: #ffffff !important;
             color: var(--trimera-text) !important;
-            border: 1px solid #dbe6ec;
-            box-shadow: none;
+            border: 1px solid #dbe6ec !important;
+            box-shadow: none !important;
         }
 
         [data-testid="stSidebar"] [data-testid="stButton"] button:hover {
@@ -190,6 +221,46 @@ def apply_trimera_ui() -> None:
             background: #eef8f3;
             border-radius: 6px;
             padding: 2px 6px;
+        }
+
+
+        .trimera-sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: .1rem .25rem 1rem .25rem;
+            padding: .75rem .8rem .95rem .8rem;
+            border-bottom: 1px solid #e7edf1;
+        }
+
+        .trimera-sidebar-brand img {
+            display: block;
+            width: 74px;
+            height: auto;
+            object-fit: contain;
+        }
+
+        .trimera-sidebar-brand-text {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .trimera-sidebar-brand-name {
+            color: var(--trimera-text) !important;
+            font-size: 1.22rem;
+            font-weight: 780;
+            line-height: 1.05;
+            letter-spacing: -.025em;
+        }
+
+        .trimera-sidebar-brand-subtitle {
+            margin-top: .28rem;
+            color: #6a7d8e !important;
+            font-size: .72rem;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
         }
 
         /* Page header card */
@@ -379,14 +450,23 @@ def apply_trimera_ui() -> None:
             opacity: .58;
         }
 
-        /* Other buttons */
+        /* Standard buttons, including Sign in */
         .stButton > button:not([kind="primary"]) {
             min-height: 43px;
             border-radius: 11px;
-            border: 1px solid var(--trimera-border);
-            background: #ffffff;
-            color: var(--trimera-text);
-            font-weight: 650;
+            border: 1px solid #0b6b73;
+            background: #0b6b73 !important;
+            color: #ffffff !important;
+            font-weight: 700;
+            box-shadow: 0 6px 14px rgba(11,107,115,.14);
+        }
+
+        .stButton > button:not([kind="primary"]):hover {
+            border-color: #0b6b73;
+            background: #0b6b73 !important;
+            color: #ffffff !important;
+            transform: none;
+            filter: none;
         }
 
         [data-testid="stExpander"] {
@@ -410,6 +490,7 @@ def apply_trimera_ui() -> None:
 
         @media (max-width: 900px) {
             .trimera-topbar {
+                left: 0;
                 padding: 0 16px;
             }
 
@@ -443,6 +524,22 @@ def apply_trimera_ui() -> None:
                 <span>Trimera Health</span>
             </div>
             <div class="trimera-topbar-app">📋 Trimera AI · Clinical Intelligence</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+
+def render_sidebar_brand() -> None:
+    st.sidebar.markdown(
+        f"""
+        <div class="trimera-sidebar-brand">
+            <img src="data:image/png;base64,{logo_b64}" alt="Trimera Health logo">
+            <div class="trimera-sidebar-brand-text">
+                <div class="trimera-sidebar-brand-name">Trimera Health</div>
+                <div class="trimera-sidebar-brand-subtitle">Trimera AI</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1065,6 +1162,8 @@ def reset_qa_session() -> None:
 
 apply_trimera_ui()
 password_gate()
+
+render_sidebar_brand()
 
 with st.sidebar:
     if st.button("Start new QA review", use_container_width=True):
