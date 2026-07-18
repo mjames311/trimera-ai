@@ -13,7 +13,13 @@ from rapidfuzz import fuzz
 
 from theme import apply_trimera_theme, page_header
 
-st.set_page_config(page_title="Trimera Documentation QA", page_icon="📋", layout="wide")
+st.set_page_config(
+    page_title="Trimera Documentation QA",
+    page_icon="📋",
+    layout="wide",
+)
+
+apply_trimera_theme()
 
 APP_TITLE = "Trimera Documentation QA"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
@@ -626,8 +632,11 @@ with st.sidebar:
     st.write(f"Model: `{MODEL}`")
     st.info("Code-level outcomes are determined by the fixed rules engine.")
 
-st.title("📋 Trimera Documentation QA")
-st.caption("Grounded review using payer, AMA, CMS, and Trimera authority documents.")
+page_header(
+    icon="📋",
+    title="Trimera Documentation QA",
+    subtitle="Grounded review using payer, AMA, CMS, and Trimera authority documents.",
+)
 
 # Reference files are intentionally not opened here. Loading them at page
 # startup made login appear frozen. They are loaded lazily after the user
