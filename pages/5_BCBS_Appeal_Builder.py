@@ -45,6 +45,11 @@ MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 DEFAULT_APPEAL_TEMPLATE_PATH = (
     Path(__file__).resolve().parents[1] / "Assets" / "APPEAL.template.docx"
 )
+AMA_GUIDELINES_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "Assets"
+    / "2023-e-m-descriptors-guidelines.pdf"
+)
 
 AMOUNT_TO_CODE = {
     25.00: "G2211",
@@ -1138,10 +1143,46 @@ def create_appeal_pdf(
     return output.getvalue()
 
 
-def merge_pdfs(first_pdf: bytes, second_pdf: bytes) -> bytes:
+def ama_guideline_pages(
+    guideline_pdf: bytes,
+    billed_codes: list[str],
+) -> tuple[bytes, dict[str, list[int]]]:
+    """Copy original AMA pages containing each billed CPT code."""
+    reader = PdfReader(io.BytesIO(guideline_pdf))
+    code_pages: dict[str, list[int]] = {}
+    selected_indexes = set()
+
+    for raw_code in billed_codes:
+        code = str(raw_code).split()[0].strip().upper()
+        if not code or not code.isdigit():
+            continue
+
+        matches = []
+        for page_index, page in enumerate(reader.pages):
+            if code in (page.extract_text() or ""):
+                matches.append(page_index + 1)
+                selected_indexes.add(page_index)
+        if matches:
+            code_pages[code] = matches
+
+    writer = PdfWriter()
+    for page_index in sorted(selected_indexes):
+        writer.add_page(reader.pages[page_index])
+
+    if not selected_indexes:
+        return b"", code_pages
+
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue(), code_pages
+
+
+def merge_pdfs(*pdf_sources: bytes) -> bytes:
     writer = PdfWriter()
 
-    for source in [first_pdf, second_pdf]:
+    for source in pdf_sources:
+        if not source:
+            continue
         reader = PdfReader(io.BytesIO(source))
         for page in reader.pages:
             writer.add_page(page)
@@ -1184,6 +1225,10 @@ report_files = st.file_uploader(
 )
 
 st.caption("The approved Trimera BCBS appeal template is included automatically.")
+st.caption(
+    "Applicable AMA guideline pages for each billed CPT code are included "
+    "automatically between the appeal letter and encounter note."
+)
 
 note_files = st.file_uploader(
     "2. Upload encounter-note PDFs",
@@ -1419,9 +1464,10 @@ if report_files and note_files:
     ):
         try:
             template_bytes = DEFAULT_APPEAL_TEMPLATE_PATH.read_bytes()
+            guideline_bytes = AMA_GUIDELINES_PATH.read_bytes()
         except OSError:
             st.error(
-                "The approved BCBS appeal template is unavailable. "
+                "The approved BCBS appeal references are unavailable. "
                 "Please contact the Trimera AI administrator."
             )
             st.stop()
@@ -1430,6 +1476,7 @@ if report_files and note_files:
         zip_output = io.BytesIO()
         built = []
         skipped = []
+        guideline_pages_by_claim = {}
 
         with zipfile.ZipFile(
             zip_output,
@@ -1456,9 +1503,15 @@ if report_files and note_files:
                     logo_bytes,
                     signature_bytes,
                 )
+                guideline_pdf, guideline_page_map = ama_guideline_pages(
+                    guideline_bytes,
+                    claim["Original Codes List"],
+                )
+                guideline_pages_by_claim[claim_index] = guideline_page_map
 
                 merged_pdf = merge_pdfs(
                     appeal_pdf,
+                    guideline_pdf,
                     note["bytes"],
                 )
 
@@ -1484,6 +1537,12 @@ if report_files and note_files:
                             "Downcoded To": row["Downcoded To"],
                             "Source Report(s)": row.get("Source Report(s)", ""),
                             "Encounter Note": selected_matches.get(index, ""),
+                            "AMA Guideline Pages": "; ".join(
+                                f"{code}: {', '.join(map(str, pages))}"
+                                for code, pages in guideline_pages_by_claim.get(
+                                    index, {}
+                                ).items()
+                            ),
                             "Packet Built": (
                                 "YES"
                                 if selected_matches.get(index)
