@@ -237,6 +237,15 @@ hr {{ margin:1.5rem 0; border-color:var(--trimera-border); }}
 .stTextInput input, .stTextArea textarea {{ border-radius:10px !important; border-color:#d4dee7 !important; background:#fff !important; color:var(--trimera-text) !important; }}
 .stTextInput input, .stTextArea textarea,
 [data-testid="stSelectbox"] input {{ -webkit-text-fill-color:var(--trimera-text) !important; opacity:1 !important; }}
+[data-testid="stDateInput"] input {{
+  background:#fff !important;
+  color:var(--trimera-text) !important;
+  -webkit-text-fill-color:var(--trimera-text) !important;
+  caret-color:var(--trimera-text) !important;
+  opacity:1 !important;
+}}
+[data-testid="stDateInput"] input::selection {{ background:#ccebd8 !important; color:var(--trimera-text) !important; }}
+[data-testid="stDateInput"] svg {{ color:var(--trimera-text) !important; fill:var(--trimera-text) !important; }}
 .stTextInput input[type="password"] {{
   background:#fff !important;
   color:var(--trimera-text) !important;

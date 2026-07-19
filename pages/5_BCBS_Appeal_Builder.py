@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import os
@@ -11,6 +12,7 @@ from xml.etree import ElementTree as ET
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from openai import OpenAI
 from pypdf import PdfReader, PdfWriter
 from rapidfuzz import fuzz
@@ -1192,6 +1194,40 @@ def merge_pdfs(*pdf_sources: bytes) -> bytes:
     return output.getvalue()
 
 
+def start_individual_downloads(packets: list[tuple[str, bytes]]) -> None:
+    """Ask the browser to download each completed appeal as its own PDF."""
+    payloads = [
+        {
+            "name": filename,
+            "data": base64.b64encode(file_bytes).decode("ascii"),
+        }
+        for filename, file_bytes in packets
+    ]
+    script = """
+<script>
+const files = __FILES__;
+files.forEach((file, index) => {
+  window.setTimeout(() => {
+    const binary = window.atob(file.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const url = URL.createObjectURL(new Blob([bytes], {type: "application/pdf"}));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, index * 350);
+});
+</script>
+""".replace("__FILES__", json.dumps(payloads))
+    components.html(script, height=0)
+
+
 apply_trimera_theme()
 require_auth(APP_TITLE, "Internal Trimera Health tool")
 render_topbar()
@@ -1473,100 +1509,103 @@ if report_files and note_files:
             st.stop()
         logo_bytes, signature_bytes = extract_docx_images(template_bytes)
 
-        zip_output = io.BytesIO()
         built = []
         skipped = []
         guideline_pages_by_claim = {}
 
-        with zipfile.ZipFile(
-            zip_output,
-            "w",
-            compression=zipfile.ZIP_DEFLATED,
-        ) as archive:
-            for claim_index, claim in claims_df.iterrows():
-                selected_filename = selected_matches.get(claim_index)
+        for claim_index, claim in claims_df.iterrows():
+            selected_filename = selected_matches.get(claim_index)
 
-                if not selected_filename or selected_filename == "No note selected":
-                    skipped.append(
-                        f"{claim['Patient']} - {claim['DOS']} - no note selected"
-                    )
-                    continue
-
-                note = next(
-                    item for item in note_data
-                    if item["filename"] == selected_filename
+            if not selected_filename or selected_filename == "No note selected":
+                skipped.append(
+                    f"{claim['Patient']} - {claim['DOS']} - no note selected"
                 )
+                continue
 
-                appeal_pdf = create_appeal_pdf(
-                    claim,
-                    f"{appeal_date.month}/{appeal_date.day}/{appeal_date.year}",
-                    logo_bytes,
-                    signature_bytes,
-                )
-                guideline_pdf, guideline_page_map = ama_guideline_pages(
-                    guideline_bytes,
-                    claim["Original Codes List"],
-                )
-                guideline_pages_by_claim[claim_index] = guideline_page_map
-
-                merged_pdf = merge_pdfs(
-                    appeal_pdf,
-                    guideline_pdf,
-                    note["bytes"],
-                )
-
-                output_name = (
-                    f"{filename_safe(claim['Patient'])}_"
-                    f"{pd.to_datetime(claim['DOS']).strftime('%Y-%m-%d')}_"
-                    f"{filename_safe(claim['Claim Number'])}_"
-                    f"BCBS_APPEAL.pdf"
-                )
-
-                archive.writestr(output_name, merged_pdf)
-                built.append(output_name)
-
-            archive.writestr(
-                "APPEAL_PACKET_MANIFEST.csv",
-                pd.DataFrame(
-                    [
-                        {
-                            "Patient": row["Patient"],
-                            "DOS": row["DOS"],
-                            "Claim Number": row["Claim Number"],
-                            "Original CPT(s) Billed": row["Original CPT(s) Billed"],
-                            "Downcoded To": row["Downcoded To"],
-                            "Source Report(s)": row.get("Source Report(s)", ""),
-                            "Encounter Note": selected_matches.get(index, ""),
-                            "AMA Guideline Pages": "; ".join(
-                                f"{code}: {', '.join(map(str, pages))}"
-                                for code, pages in guideline_pages_by_claim.get(
-                                    index, {}
-                                ).items()
-                            ),
-                            "Packet Built": (
-                                "YES"
-                                if selected_matches.get(index)
-                                not in {None, "No note selected"}
-                                else "NO"
-                            ),
-                        }
-                        for index, row in claims_df.iterrows()
-                    ]
-                ).to_csv(index=False),
+            note = next(
+                item for item in note_data
+                if item["filename"] == selected_filename
             )
+
+            appeal_pdf = create_appeal_pdf(
+                claim,
+                f"{appeal_date.month}/{appeal_date.day}/{appeal_date.year}",
+                logo_bytes,
+                signature_bytes,
+            )
+            guideline_pdf, guideline_page_map = ama_guideline_pages(
+                guideline_bytes,
+                claim["Original Codes List"],
+            )
+            guideline_pages_by_claim[claim_index] = guideline_page_map
+
+            merged_pdf = merge_pdfs(
+                appeal_pdf,
+                guideline_pdf,
+                note["bytes"],
+            )
+
+            output_name = (
+                f"{filename_safe(claim['Patient'])}_"
+                f"{pd.to_datetime(claim['DOS']).strftime('%Y-%m-%d')}_"
+                f"{filename_safe(claim['Claim Number'])}_"
+                f"BCBS_APPEAL.pdf"
+            )
+
+            built.append((output_name, merged_pdf))
+
+        manifest_csv = pd.DataFrame(
+            [
+                {
+                    "Patient": row["Patient"],
+                    "DOS": row["DOS"],
+                    "Claim Number": row["Claim Number"],
+                    "Original CPT(s) Billed": row["Original CPT(s) Billed"],
+                    "Downcoded To": row["Downcoded To"],
+                    "Source Report(s)": row.get("Source Report(s)", ""),
+                    "Encounter Note": selected_matches.get(index, ""),
+                    "AMA Guideline Pages": "; ".join(
+                        f"{code}: {', '.join(map(str, pages))}"
+                        for code, pages in guideline_pages_by_claim.get(
+                            index, {}
+                        ).items()
+                    ),
+                    "Packet Built": (
+                        "YES"
+                        if selected_matches.get(index)
+                        not in {None, "No note selected"}
+                        else "NO"
+                    ),
+                }
+                for index, row in claims_df.iterrows()
+            ]
+        ).to_csv(index=False)
 
         if built:
             st.success(f"Built {len(built)} appeal packet(s).")
-
+            start_individual_downloads(built)
+            st.caption(
+                "Each appeal PDF should begin downloading automatically. "
+                "If your browser blocks multiple downloads, use the individual "
+                "buttons below."
+            )
+            for packet_index, (output_name, output_bytes) in enumerate(built):
+                st.download_button(
+                    f"Download {output_name}",
+                    data=output_bytes,
+                    file_name=output_name,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    on_click="ignore",
+                    key=f"appeal_pdf_{packet_index}",
+                )
             st.download_button(
-                "Download all appeal packets",
-                data=zip_output.getvalue(),
-                file_name=(
-                    f"BCBS_APPEAL_PACKETS_"
-                    f"{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
-                ),
-                mime="application/zip",
+                "Download appeal manifest",
+                data=manifest_csv,
+                file_name="APPEAL_PACKET_MANIFEST.csv",
+                mime="text/csv",
                 use_container_width=True,
+                on_click="ignore",
             )
 
         if tracker_file is not None:

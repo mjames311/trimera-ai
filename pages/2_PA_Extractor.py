@@ -308,7 +308,7 @@ if uploaded:
 
 
 if st.button(
-    "Analyze prior authorization",
+    "Analyze assessment note",
     type="primary",
     use_container_width=True,
 ):
