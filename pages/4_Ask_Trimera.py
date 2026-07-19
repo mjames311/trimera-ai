@@ -3,6 +3,7 @@ from typing import Any
 
 import streamlit as st
 from openai import OpenAI
+from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
 st.set_page_config(
@@ -249,12 +250,13 @@ def render_message(message: dict[str, Any]) -> None:
             st.caption(f"Attached: {names}")
 
 
+apply_trimera_theme()
 password_gate()
 initialize_state()
+render_topbar()
 
 with st.sidebar:
-    st.title("Ask Trimera")
-
+    sidebar_label("Quick actions")
     use_web = st.toggle(
         "Search the web",
         value=False,
@@ -268,11 +270,13 @@ with st.sidebar:
     if st.button("Sign out", use_container_width=True):
         sign_out()
         st.rerun()
+    sidebar_model(MODEL)
+    sidebar_reminder("Private workspace", "Files and questions are handled through the configured server-side account.")
 
-st.title("💬 Ask Trimera")
-st.caption(
-    "Ask questions or attach multiple PDF, Word, Excel, CSV, text, or "
-    "PowerPoint files."
+page_header(
+    "▤",
+    "Ask Trimera",
+    "Ask questions or attach PDF, Word, Excel, CSV, text, or PowerPoint files.",
 )
 
 uploaded_files = st.file_uploader(

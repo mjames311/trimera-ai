@@ -10,6 +10,14 @@ from docx import Document
 from openai import OpenAI
 from pypdf import PdfReader
 from rapidfuzz import fuzz
+from theme import (
+    apply_trimera_theme as apply_shared_theme,
+    page_header as shared_page_header,
+    render_topbar,
+    sidebar_label,
+    sidebar_model,
+    sidebar_reminder,
+)
 
 st.set_page_config(
     page_title="Trimera Documentation QA",
@@ -1160,22 +1168,26 @@ def reset_qa_session() -> None:
         st.session_state.pop(key, None)
 
 
-apply_trimera_ui()
+apply_shared_theme()
 password_gate()
-
-render_sidebar_brand()
+render_topbar()
 
 with st.sidebar:
+    sidebar_label("Quick actions")
     if st.button("Start new QA review", use_container_width=True):
         reset_qa_session()
         st.rerun()
     if st.button("Sign out", use_container_width=True):
         st.session_state.clear()
         st.rerun()
-    st.write(f"Model: `{MODEL}`")
-    st.info("Code-level outcomes are determined by the fixed rules engine.")
+    sidebar_model(MODEL)
+    sidebar_reminder("Reminder", "Code-level outcomes are determined by the fixed rules engine.")
 
-render_trimera_header()
+shared_page_header(
+    "▣",
+    "Documentation QA",
+    "Grounded review using payer, AMA, CMS, and Trimera authority documents.",
+)
 
 # Reference files are intentionally not opened here. Loading them at page
 # startup made login appear frozen. They are loaded lazily after the user

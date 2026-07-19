@@ -3,6 +3,7 @@ from typing import Any
 
 import streamlit as st
 from openai import OpenAI
+from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 st.set_page_config(page_title="Medication Interaction Review", page_icon="💊", layout="wide")
 
@@ -165,12 +166,13 @@ def run_response(client: OpenAI) -> str:
     return response.output_text or "No response was returned."
 
 
+apply_trimera_theme()
 password_gate()
 initialize_state()
+render_topbar()
 
 with st.sidebar:
-    st.markdown("### Medication Interaction Review")
-    st.caption("Upload or paste one patient note, receive the initial review, then ask follow-up questions about the same patient and medication list.")
+    sidebar_label("Quick actions")
     if st.session_state.get("med_chat_messages"):
         if st.button("Clear review and start over", use_container_width=True):
             clear_review()
@@ -179,9 +181,14 @@ with st.sidebar:
         clear_review()
         st.session_state.clear()
         st.rerun()
+    sidebar_model(MODEL)
+    sidebar_reminder("Clinician review", "Confirm important findings against current prescribing information or a pharmacist.")
 
-st.title("💊 Medication Interaction Review")
-st.caption("Upload or paste one patient note. After the initial analysis, continue with follow-up questions in the chat.")
+page_header(
+    "♧",
+    "Medication Interaction Review",
+    "Upload or paste one patient note, then continue with patient-specific follow-up questions.",
+)
 st.warning("Clinician review required. Confirm the active medication list and verify important findings against current prescribing information or a pharmacist.")
 
 if not st.session_state["med_chat_messages"]:

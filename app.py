@@ -1,10 +1,10 @@
 import os
 import re
 from pathlib import Path
-from PIL import Image
 from typing import List, Tuple
 
 import streamlit as st
+from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 st.set_page_config(
 
     page_title="Trimera AI Suite",
@@ -12,13 +12,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-LOGO = Image.open("Assets/trimera_logo.png")
-
-st.image(LOGO, width=120)
-
-st.title("Trimera AI Suite")
-st.caption("Internal Clinical Operations Tools")
-st.divider()
+apply_trimera_theme()
 from dotenv import load_dotenv
 from openai import OpenAI
 from pypdf import PdfReader
@@ -179,14 +173,19 @@ def parse_codes(raw):
 
 
 password_gate()
-st.title(APP_TITLE)
-st.caption("Prototype: fictional or fully de-identified notes only until all BAAs and production safeguards are active.")
+render_topbar()
+page_header(
+    "▣",
+    "Trimera AI Suite",
+    "Internal clinical intelligence and practice operations tools.",
+)
 
 with st.sidebar:
+    sidebar_label("Quick actions")
     if st.button("Sign out"):
         st.session_state.clear(); st.rerun()
-    st.write(f"Model: `{MODEL}`")
-    st.info("The API key stays in the server-side .env file.")
+    sidebar_model(MODEL)
+    sidebar_reminder("Secure environment", "The API key remains server-side.")
 
 try:
     manual_chunks = split_manual(read_manual(str(MANUAL_PATH)))

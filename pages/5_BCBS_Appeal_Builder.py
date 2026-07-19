@@ -27,6 +27,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
 st.set_page_config(
@@ -1168,25 +1169,27 @@ def merge_pdfs(first_pdf: bytes, second_pdf: bytes) -> bytes:
     return output.getvalue()
 
 
+apply_trimera_theme()
 password_gate()
+render_topbar()
 
 with st.sidebar:
+    sidebar_label("Quick actions")
     if st.button("Sign out", use_container_width=True):
         st.session_state.clear()
         st.rerun()
 
-    st.info(
-        "This tool combines multiple remittance reports, builds one appeal "
-        "packet per unique downcoded claim, and flags anything it cannot match safely."
+    sidebar_model(MODEL)
+    sidebar_reminder(
+        "Appeal workflow",
+        "Builds one packet per unique downcoded claim and flags unsafe matches.",
     )
 
 
-st.title("📨 BCBS Downcoding Appeal Packet Builder")
-st.caption(
-    "Upload one or more BCBS remittance reports in CSV, Excel, PDF, or Word "
-    "format, the appeal template, all encounter-note PDFs, and optionally the "
-    "current tracker. The tool builds "
-    "the appeal packets and returns an updated tracker in the same run."
+page_header(
+    "♢",
+    "BCBS Appeal Builder",
+    "Build downcoding appeal packets from remittance reports, encounter notes, and the current tracker.",
 )
 
 report_files = st.file_uploader(

@@ -4,6 +4,7 @@ from typing import Any
 import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
+from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
 st.set_page_config(
@@ -234,9 +235,12 @@ def reset_era_session() -> None:
         st.session_state.pop(key, None)
 
 
+apply_trimera_theme()
 password_gate()
+render_topbar()
 
 with st.sidebar:
+    sidebar_label("Quick actions")
     if st.button("Start new ERA review", use_container_width=True):
         reset_era_session()
         st.rerun()
@@ -245,14 +249,14 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-    st.write(f"Model: `{MODEL}`")
-    st.info("Upload related payer documents together for a consolidated review.")
+    sidebar_model(MODEL)
+    sidebar_reminder("Packet review", "Upload related payer documents together for a consolidated review.")
 
 
-st.title("💳 ERA Analyzer")
-st.caption(
-    "Upload one or multiple ERA, remittance, or claim-detail PDFs. "
-    "The analyzer will synthesize related records and keep unrelated claims separate."
+page_header(
+    "⌁",
+    "ERA Analyzer",
+    "Upload ERA, remittance, or claim-detail PDFs for a consolidated payment review.",
 )
 
 st.warning(

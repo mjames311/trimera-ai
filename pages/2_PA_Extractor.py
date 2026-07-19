@@ -4,6 +4,7 @@ from typing import List
 import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
+from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
 st.set_page_config(
@@ -276,9 +277,12 @@ def reset_pa_session() -> None:
         st.session_state.pop(key, None)
 
 
+apply_trimera_theme()
 password_gate()
+render_topbar()
 
 with st.sidebar:
+    sidebar_label("Quick actions")
     if st.button("Start new PA review", use_container_width=True):
         reset_pa_session()
         st.rerun()
@@ -287,13 +291,14 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-    st.write(f"Model: `{MODEL}`")
-    st.info("The API key remains server-side.")
+    sidebar_model(MODEL)
+    sidebar_reminder("Secure workflow", "The API key remains server-side.")
 
 
-st.title("📄 TRD Prior Authorization Assistant")
-st.caption(
-    "Select TMS or Spravato, then upload the PA document for a detailed review."
+page_header(
+    "♙",
+    "Prior Authorization Assistant",
+    "Select TMS or Spravato, then upload the PA document for a detailed review.",
 )
 
 request_type = st.radio(
