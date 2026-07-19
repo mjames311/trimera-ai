@@ -201,10 +201,6 @@ st.markdown(
         <div class="trimera-tool-icon">{icon_svg("medication")}</div><div class="trimera-tool-name">Medication Interaction Review</div>
         <div class="trimera-tool-description">Extracts the current medication list and reviews interactions, safety concerns, monitoring needs, and follow-up questions.</div>
       </a>
-      <a class="trimera-tool-card" href="/Submit_an_Improvement_Idea" target="_self">
-        <div class="trimera-tool-icon">{icon_svg("idea")}</div><div class="trimera-tool-name">Submit an Improvement Idea</div>
-        <div class="trimera-tool-description">Share a workflow challenge or opportunity where AI and automation could help Trimera work better.</div>
-      </a>
     </div>
     <div class="trimera-section-title">How answers are grounded</div>
     <div class="trimera-source-grid">
