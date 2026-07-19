@@ -247,7 +247,7 @@ with st.sidebar:
     sidebar_reminder("Private workspace", "Files and questions are handled through the configured server-side account.")
 
 page_header(
-    "▤",
+    "ask",
     "Ask Trimera",
     "Ask questions or attach PDF, Word, Excel, CSV, text, or PowerPoint files.",
 )

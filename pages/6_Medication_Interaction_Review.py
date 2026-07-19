@@ -173,7 +173,7 @@ with st.sidebar:
     sidebar_reminder("Clinician review", "Confirm important findings against current prescribing information or a pharmacist.")
 
 page_header(
-    "♧",
+    "medication",
     "Medication Interaction Review",
     "Upload or paste one patient note, then continue with patient-specific follow-up questions.",
 )

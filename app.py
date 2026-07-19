@@ -5,7 +5,7 @@ from typing import List, Tuple
 
 import streamlit as st
 from auth import logout_user
-from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
+from theme import apply_trimera_theme, icon_svg, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 st.set_page_config(
 
     page_title="Trimera AI Suite",
@@ -156,7 +156,7 @@ def parse_codes(raw):
 
 render_topbar()
 page_header(
-    "⌂",
+    "home",
     "Home",
     "Clinical intelligence and practice operations tools for Trimera Health.",
 )
@@ -171,7 +171,7 @@ with st.sidebar:
     sidebar_reminder("Secure environment", "The API key remains server-side.")
 
 st.markdown(
-    """
+    f"""
     <p class="trimera-home-intro">
       Trimera AI brings clinical documentation, payer review, billing analysis,
       medication safety, and general practice intelligence into one secure internal workspace.
@@ -180,27 +180,27 @@ st.markdown(
     <div class="trimera-section-title">Available tools</div>
     <div class="trimera-tool-grid">
       <a class="trimera-tool-card" href="/Documentation_QA" target="_self">
-        <div class="trimera-tool-icon">▣</div><div class="trimera-tool-name">Documentation QA</div>
+        <div class="trimera-tool-icon">{icon_svg("documentation")}</div><div class="trimera-tool-name">Documentation QA</div>
         <div class="trimera-tool-description">Checks whether a completed note supports the intended billing using extracted facts, fixed coding rules, and governing references.</div>
       </a>
       <a class="trimera-tool-card" href="/PA_Extractor" target="_self">
-        <div class="trimera-tool-icon">♙</div><div class="trimera-tool-name">Prior Authorization Assistant</div>
+        <div class="trimera-tool-icon">{icon_svg("authorization")}</div><div class="trimera-tool-name">Prior Authorization Assistant</div>
         <div class="trimera-tool-description">Reviews TMS and Spravato authorization documents for requirements, missing information, and next steps.</div>
       </a>
       <a class="trimera-tool-card" href="/ERA_Analyzer" target="_self">
-        <div class="trimera-tool-icon">⌁</div><div class="trimera-tool-name">ERA Analyzer</div>
+        <div class="trimera-tool-icon">{icon_svg("era")}</div><div class="trimera-tool-name">ERA Analyzer</div>
         <div class="trimera-tool-description">Analyzes ERA, remittance, and claim-detail files to clarify payments, denials, adjustments, and follow-up actions.</div>
       </a>
       <a class="trimera-tool-card" href="/Ask_Trimera" target="_self">
-        <div class="trimera-tool-icon">▤</div><div class="trimera-tool-name">Ask Trimera</div>
+        <div class="trimera-tool-icon">{icon_svg("ask")}</div><div class="trimera-tool-name">Ask Trimera</div>
         <div class="trimera-tool-description">Answers general operational questions, analyzes attached files, and automatically researches reputable current sources when useful.</div>
       </a>
       <a class="trimera-tool-card" href="/BCBS_Appeal_Builder" target="_self">
-        <div class="trimera-tool-icon">♢</div><div class="trimera-tool-name">BCBS Appeal Builder</div>
+        <div class="trimera-tool-icon">{icon_svg("appeal")}</div><div class="trimera-tool-name">BCBS Appeal Builder</div>
         <div class="trimera-tool-description">Matches downcoded claims to encounter notes, builds appeal packets, and prepares tracker updates.</div>
       </a>
       <a class="trimera-tool-card" href="/Medication_Interaction_Review" target="_self">
-        <div class="trimera-tool-icon">♧</div><div class="trimera-tool-name">Medication Interaction Review</div>
+        <div class="trimera-tool-icon">{icon_svg("medication")}</div><div class="trimera-tool-name">Medication Interaction Review</div>
         <div class="trimera-tool-description">Extracts the current medication list and reviews interactions, safety concerns, monitoring needs, and follow-up questions.</div>
       </a>
     </div>

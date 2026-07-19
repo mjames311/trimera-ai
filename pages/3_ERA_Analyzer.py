@@ -232,7 +232,7 @@ with st.sidebar:
 
 
 page_header(
-    "⌁",
+    "era",
     "ERA Analyzer",
     "Upload ERA, remittance, or claim-detail PDFs for a consolidated payment review.",
 )

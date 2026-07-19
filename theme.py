@@ -17,6 +17,29 @@ TRIMERA_BACKGROUND = "#F7F9FB"
 TRIMERA_SURFACE = "#FFFFFF"
 
 
+ICON_PATHS = {
+    "home": '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/>',
+    "documentation": '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5M8.5 10l2 2 4-4M8 16h8"/>',
+    "authorization": '<path d="M12 3 20 6v5c0 5.2-3.3 8.3-8 10-4.7-1.7-8-4.8-8-10V6l8-3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
+    "era": '<path d="M5 3h14v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L5 21V3Z"/><path d="M8 8h8M8 12h3M15.5 11v4M17.2 12.2c-.5-.6-2.7-.5-2.7.6 0 1.4 3 .6 3 2 0 1.1-2.3 1.2-3 .5"/>',
+    "ask": '<path d="M20 14a3 3 0 0 1-3 3H9l-5 4v-4a3 3 0 0 1-2-2.8V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v7Z"/><path d="M7 9h8M7 13h5"/>',
+    "appeal": '<path d="M6 3h9l4 4v14H6V3Z"/><path d="M15 3v5h4M15.5 16H9m0 0 3-3m-3 3 3 3"/>',
+    "medication": '<path d="m8.2 4.2 11.6 11.6a4.2 4.2 0 0 1-6 6L2.2 10.2a4.2 4.2 0 0 1 6-6Z"/><path d="m7 15 8-8M5.5 7.5l4 4M14.5 16.5l2 2"/>',
+    "clinical": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3.5V2h6v1.5M12 8v7M8.5 11.5h7"/>',
+    "user": '<circle cx="12" cy="8" r="3.5"/><path d="M5 21c.5-4 3-6 7-6s6.5 2 7 6"/>',
+}
+
+
+def icon_svg(name: str, class_name: str = "trimera-icon-svg") -> str:
+    """Return a trusted, accessible icon from the shared Trimera icon set."""
+    paths = ICON_PATHS.get(name, ICON_PATHS["clinical"])
+    return (
+        f'<svg class="{escape(class_name)}" viewBox="0 0 24 24" fill="none" '
+        f'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+        f'stroke-linejoin="round" aria-hidden="true">{paths}</svg>'
+    )
+
+
 def apply_trimera_theme() -> None:
     """Apply the screenshot-aligned Trimera shell and component styling."""
     st.markdown(
@@ -79,8 +102,11 @@ html, body, [class*="css"] {{
 .trimera-brand-name {{ font-family:Georgia,serif; font-size:1.42rem; font-weight:700; letter-spacing:.005em; }}
 .trimera-brand-tagline {{ margin-top:5px; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.62rem; font-weight:650; letter-spacing:.055em; opacity:.94; }}
 .trimera-suite {{ display:flex; align-items:center; gap:11px; font-size:.91rem; font-weight:800; letter-spacing:.025em; text-transform:uppercase; }}
+.trimera-icon-svg {{ width:1em; height:1em; display:block; }}
 .trimera-suite-icon {{ font-size:1.32rem; }}
-.trimera-user {{ width:29px; height:29px; display:grid; place-items:center; border:2px solid white; border-radius:50%; font-size:.82rem; margin-left:14px; }}
+.trimera-suite-icon .trimera-icon-svg {{ width:24px; height:24px; }}
+.trimera-user {{ width:29px; height:29px; display:grid; place-items:center; border:2px solid white; border-radius:50%; margin-left:14px; }}
+.trimera-user .trimera-icon-svg {{ width:18px; height:18px; }}
 
 [data-testid="stMainBlockContainer"], .block-container {{
   max-width: 1320px;
@@ -165,6 +191,7 @@ button[aria-label="Expand sidebar"] {{ display:none !important; visibility:hidde
 .trimera-tool-card {{ display:block; min-height:156px; padding:1.05rem; color:var(--trimera-text) !important; text-decoration:none !important; background:#fff; border:1px solid var(--trimera-border); border-radius:13px; box-shadow:0 5px 16px rgba(13,27,46,.055); transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }}
 .trimera-tool-card:hover {{ transform:translateY(-2px); border-color:#80caa2; box-shadow:0 9px 22px rgba(13,27,46,.09); }}
 .trimera-tool-icon {{ width:38px; height:38px; display:grid; place-items:center; margin-bottom:.65rem; color:#258f61; background:#edf8ed; border-radius:10px; font-size:1.2rem; }}
+.trimera-tool-icon .trimera-icon-svg {{ width:23px; height:23px; }}
 .trimera-tool-name {{ margin-bottom:.32rem; color:var(--trimera-text); font-size:.96rem; font-weight:800; }}
 .trimera-tool-description {{ color:var(--trimera-muted); font-size:.82rem; line-height:1.48; }}
 .trimera-source-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.8rem; margin-bottom:1.25rem; }}
@@ -189,6 +216,7 @@ button[aria-label="Expand sidebar"] {{ display:none !important; visibility:hidde
 }}
 .trimera-page-card::before {{ content:""; position:absolute; inset:0 auto 0 0; width:8px; background:linear-gradient(180deg,var(--trimera-green),#38b66d 48%,var(--trimera-blue) 52%,var(--trimera-blue)); }}
 .trimera-page-icon {{ position:absolute; left:1.45rem; top:50%; transform:translateY(-50%); width:78px; height:78px; display:grid; place-items:center; border-radius:14px; background:linear-gradient(145deg,#f1f8ee,#edf7f3); color:#48ad4d; font-size:2.55rem; }}
+.trimera-page-icon .trimera-icon-svg {{ width:46px; height:46px; }}
 .trimera-kicker {{ color:#087d76; font-size:.72rem; font-weight:850; letter-spacing:.095em; text-transform:uppercase; margin-bottom:.25rem; }}
 .trimera-page-title {{ color:var(--trimera-text); font-size:2.35rem; line-height:1.08; font-weight:820; letter-spacing:-.035em; }}
 .trimera-page-subtitle {{ color:var(--trimera-muted); margin:.42rem 0 0; font-size:1rem; line-height:1.45; }}
@@ -288,7 +316,7 @@ thead tr {{ background:var(--trimera-navy) !important; color:white !important; }
 
 def render_topbar() -> None:
     st.markdown(
-        """
+        f"""
 <div class="trimera-topbar">
   <div class="trimera-wordmark">
     <svg class="trimera-mark" viewBox="0 0 100 88" role="img" aria-label="Trimera Health logo">
@@ -300,7 +328,7 @@ def render_topbar() -> None:
     </svg>
     <span class="trimera-brand-copy"><span class="trimera-brand-name">Trimera Health</span><span class="trimera-brand-tagline">Offering Hope for Healing</span></span>
   </div>
-  <div class="trimera-suite"><span class="trimera-suite-icon">▣</span><span>Trimera AI&nbsp; · &nbsp;Clinical Intelligence</span><span class="trimera-user">○</span></div>
+  <div class="trimera-suite"><span class="trimera-suite-icon">{icon_svg("clinical")}</span><span>Trimera AI&nbsp; · &nbsp;Clinical Intelligence</span><span class="trimera-user">{icon_svg("user")}</span></div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -311,7 +339,7 @@ def page_header(icon: str, title: str, subtitle: Optional[str] = None) -> None:
     st.markdown(
         f"""
 <section class="trimera-page-card">
-  <div class="trimera-page-icon">{escape(icon)}</div>
+  <div class="trimera-page-icon">{icon_svg(icon)}</div>
   <div class="trimera-kicker">Trimera AI · Clinical Intelligence</div>
   <div class="trimera-page-title">{escape(title)}</div>
   <p class="trimera-page-subtitle">{escape(subtitle or "")}</p>

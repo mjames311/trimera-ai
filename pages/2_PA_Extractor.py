@@ -274,7 +274,7 @@ with st.sidebar:
 
 
 page_header(
-    "♙",
+    "authorization",
     "Prior Authorization Assistant",
     "Select TMS or Spravato, then upload the PA document for a detailed review.",
 )

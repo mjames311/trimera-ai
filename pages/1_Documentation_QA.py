@@ -1167,7 +1167,7 @@ with st.sidebar:
     sidebar_reminder("Reminder", "Code-level outcomes are determined by the fixed rules engine.")
 
 shared_page_header(
-    "▣",
+    "documentation",
     "Documentation QA",
     "Grounded review using payer, AMA, CMS, and Trimera authority documents.",
 )

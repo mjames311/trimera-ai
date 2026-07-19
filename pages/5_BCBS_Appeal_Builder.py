@@ -1164,7 +1164,7 @@ with st.sidebar:
 
 
 page_header(
-    "♢",
+    "appeal",
     "BCBS Appeal Builder",
     "Build downcoding appeal packets from remittance reports, encounter notes, and the current tracker.",
 )
