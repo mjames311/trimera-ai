@@ -173,9 +173,7 @@ with st.sidebar:
 st.markdown(
     f"""
     <p class="trimera-home-intro">
-      Trimera AI brings clinical documentation, payer review, billing analysis,
-      medication safety, and general practice intelligence into one secure internal workspace.
-      Choose a tool below based on the task you need to complete.
+      Trimera AI transforms complex clinical and administrative work into clear, actionable intelligence. Built around Trimera Health’s workflows, the platform combines practice-specific standards, authoritative healthcare guidance, current research, and structured safeguards to help our team work faster and make better-informed decisions. Security and the responsible protection of protected health information are fundamental to every tool, without compromising the accuracy, accountability, or professional judgment each patient and payer interaction demands.
     </p>
     <div class="trimera-section-title">Available tools</div>
     <div class="trimera-tool-grid">
@@ -202,6 +200,10 @@ st.markdown(
       <a class="trimera-tool-card" href="/Medication_Interaction_Review" target="_self">
         <div class="trimera-tool-icon">{icon_svg("medication")}</div><div class="trimera-tool-name">Medication Interaction Review</div>
         <div class="trimera-tool-description">Extracts the current medication list and reviews interactions, safety concerns, monitoring needs, and follow-up questions.</div>
+      </a>
+      <a class="trimera-tool-card" href="/Submit_an_Improvement_Idea" target="_self">
+        <div class="trimera-tool-icon">{icon_svg("idea")}</div><div class="trimera-tool-name">Submit an Improvement Idea</div>
+        <div class="trimera-tool-description">Share a workflow challenge or opportunity where AI and automation could help Trimera work better.</div>
       </a>
     </div>
     <div class="trimera-section-title">How answers are grounded</div>
