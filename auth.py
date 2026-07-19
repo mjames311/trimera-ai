@@ -11,6 +11,13 @@ MAX_SESSION_SECONDS = 8 * 60 * 60
 LAST_ACTIVITY_KEY = "trimera_last_activity"
 SESSION_STARTED_KEY = "trimera_session_started"
 DEFAULT_ALLOWED_DOMAIN = "trimerahealth.net"
+REQUIRED_AUTH_SETTINGS = (
+    "redirect_uri",
+    "cookie_secret",
+    "client_id",
+    "client_secret",
+    "server_metadata_url",
+)
 
 
 def _user_claims() -> dict:
@@ -18,6 +25,15 @@ def _user_claims() -> dict:
     if not getattr(st.user, "is_logged_in", False):
         return {}
     return st.user.to_dict()
+
+
+def _auth_is_configured() -> bool:
+    """Return whether Streamlit has a complete OIDC provider configuration."""
+    try:
+        auth_settings = st.secrets.get("auth", {})
+        return all(str(auth_settings.get(key, "")).strip() for key in REQUIRED_AUTH_SETTINGS)
+    except Exception:
+        return False
 
 
 def _logout() -> None:
@@ -82,8 +98,14 @@ def require_auth(title: str, caption: str) -> None:
     if not getattr(st.user, "is_logged_in", False):
         st.title(title)
         st.caption(caption)
-        st.info("Sign in with your Trimera Health work email to continue.")
-        st.button("Sign in with Google", type="primary", on_click=st.login)
+        if _auth_is_configured():
+            st.info("Sign in with your Trimera Health work email to continue.")
+            st.button("Sign in with Google", type="primary", on_click=st.login)
+        else:
+            st.error(
+                "Google sign-in is awaiting administrator configuration. "
+                "No staff credentials were accepted or transmitted."
+            )
         st.stop()
 
     claims = _user_claims()

@@ -13,6 +13,7 @@ st.set_page_config(
     page_title="TRD Prior Authorization Assistant",
     page_icon="📄",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 APP_TITLE = "TRD Prior Authorization Assistant"

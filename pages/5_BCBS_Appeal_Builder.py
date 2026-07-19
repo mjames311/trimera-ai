@@ -35,6 +35,7 @@ st.set_page_config(
     page_title="BCBS Appeal Packet Builder",
     page_icon="📨",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 APP_TITLE = "BCBS Appeal Packet Builder"

@@ -73,8 +73,11 @@ html, body, [class*="css"] {{
   background: var(--trimera-gradient);
   box-shadow: 0 5px 18px rgba(13,27,46,.12);
 }}
-.trimera-wordmark {{ display:flex; align-items:center; gap:13px; font-family:Georgia,serif; font-size:1.42rem; font-weight:700; }}
-.trimera-mark {{ position:relative; width:31px; height:31px; display:inline-grid; place-items:center; font-family:Arial,sans-serif; font-size:2.3rem; line-height:1; font-weight:300; transform:translateY(-1px); }}
+.trimera-wordmark {{ display:flex; align-items:center; gap:12px; color:#fff; }}
+.trimera-mark {{ width:38px; height:38px; flex:0 0 38px; display:block; }}
+.trimera-brand-copy {{ display:flex; flex-direction:column; justify-content:center; line-height:1; }}
+.trimera-brand-name {{ font-family:Georgia,serif; font-size:1.42rem; font-weight:700; letter-spacing:.005em; }}
+.trimera-brand-tagline {{ margin-top:5px; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.62rem; font-weight:650; letter-spacing:.055em; opacity:.94; }}
 .trimera-suite {{ display:flex; align-items:center; gap:11px; font-size:.91rem; font-weight:800; letter-spacing:.025em; text-transform:uppercase; }}
 .trimera-suite-icon {{ font-size:1.32rem; }}
 .trimera-user {{ width:29px; height:29px; display:grid; place-items:center; border:2px solid white; border-radius:50%; font-size:.82rem; margin-left:14px; }}
@@ -95,6 +98,11 @@ html, body, [class*="css"] {{
   padding-top: 84px;
 }}
 [data-testid="stSidebar"] > div:first-child {{ width:330px !important; }}
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"],
+button[aria-label="Collapse sidebar"],
+button[aria-label="Expand sidebar"] {{ display:none !important; visibility:hidden !important; pointer-events:none !important; }}
 [data-testid="stSidebar"]::before {{
   content:"";
   position:absolute;
@@ -200,6 +208,14 @@ hr {{ margin:1.5rem 0; border-color:var(--trimera-border); }}
 .stTextInput input, .stTextArea textarea {{ border-radius:10px !important; border-color:#d4dee7 !important; background:#fff !important; color:var(--trimera-text) !important; }}
 .stTextInput input, .stTextArea textarea,
 [data-testid="stSelectbox"] input {{ -webkit-text-fill-color:var(--trimera-text) !important; opacity:1 !important; }}
+.stTextInput input[type="password"] {{
+  background:#fff !important;
+  color:var(--trimera-text) !important;
+  -webkit-text-fill-color:var(--trimera-text) !important;
+  caret-color:var(--trimera-text) !important;
+  opacity:1 !important;
+}}
+.stTextInput [data-baseweb="input"] svg {{ color:var(--trimera-text) !important; fill:var(--trimera-text) !important; }}
 .stTextInput input::placeholder, .stTextArea textarea::placeholder,
 [data-testid="stSelectbox"] input::placeholder {{ color:#718398 !important; -webkit-text-fill-color:#718398 !important; opacity:1 !important; }}
 [data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background:#fff !important; color:var(--trimera-text) !important; border-color:#d4dee7 !important; }}
@@ -274,7 +290,16 @@ def render_topbar() -> None:
     st.markdown(
         """
 <div class="trimera-topbar">
-  <div class="trimera-wordmark"><span class="trimera-mark">△</span><span>Trimera Health</span></div>
+  <div class="trimera-wordmark">
+    <svg class="trimera-mark" viewBox="0 0 100 88" role="img" aria-label="Trimera Health logo">
+      <path d="M50 4 L96 84 H4 Z" fill="none" stroke="white" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M50 8 L73 47 H27 Z" fill="white" opacity=".30"/>
+      <path d="M27 47 L50 84 H4 Z" fill="white" opacity=".24"/>
+      <path d="M73 47 L96 84 H50 Z" fill="white" opacity=".38"/>
+      <path d="M27 47 H73 L50 84 Z" fill="white" opacity=".88"/>
+    </svg>
+    <span class="trimera-brand-copy"><span class="trimera-brand-name">Trimera Health</span><span class="trimera-brand-tagline">Offering Hope for Healing</span></span>
+  </div>
   <div class="trimera-suite"><span class="trimera-suite-icon">▣</span><span>Trimera AI&nbsp; · &nbsp;Clinical Intelligence</span><span class="trimera-user">○</span></div>
 </div>
 """,

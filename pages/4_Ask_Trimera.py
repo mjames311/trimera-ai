@@ -12,6 +12,7 @@ st.set_page_config(
     page_title="Ask Trimera",
     page_icon="💬",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")

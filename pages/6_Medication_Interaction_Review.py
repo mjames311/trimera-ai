@@ -7,7 +7,12 @@ from auth import logout_user, require_auth
 from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
-st.set_page_config(page_title="Medication Interaction Review", page_icon="💊", layout="wide")
+st.set_page_config(
+    page_title="Medication Interaction Review",
+    page_icon="💊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 APP_TITLE = "Medication Interaction Review"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
