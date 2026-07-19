@@ -13,7 +13,7 @@ import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader, PdfWriter
 from rapidfuzz import fuzz
-from auth import require_auth
+from auth import logout_user, require_auth
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import letter
@@ -38,7 +38,6 @@ st.set_page_config(
 )
 
 APP_TITLE = "BCBS Appeal Packet Builder"
-TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 API_KEY = os.getenv("OPENAI_API_KEY", "")
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 
@@ -1148,14 +1147,13 @@ def merge_pdfs(first_pdf: bytes, second_pdf: bytes) -> bytes:
 
 
 apply_trimera_theme()
-require_auth(TEST_PASSWORD, APP_TITLE, "Internal Trimera Health tool")
+require_auth(APP_TITLE, "Internal Trimera Health tool")
 render_topbar()
 
 with st.sidebar:
     sidebar_label("Quick actions")
     if st.button("Sign out", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+        logout_user()
 
     sidebar_model(MODEL)
     sidebar_reminder(

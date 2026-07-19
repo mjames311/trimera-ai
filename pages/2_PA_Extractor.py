@@ -4,7 +4,7 @@ from typing import List
 import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
-from auth import require_auth
+from auth import logout_user, require_auth
 from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
@@ -17,7 +17,6 @@ st.set_page_config(
 
 APP_TITLE = "TRD Prior Authorization Assistant"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
-TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 BASE_RULES = """
@@ -257,7 +256,7 @@ def reset_pa_session() -> None:
 
 
 apply_trimera_theme()
-require_auth(TEST_PASSWORD, APP_TITLE, "Internal Trimera Health tool")
+require_auth(APP_TITLE, "Internal Trimera Health tool")
 render_topbar()
 
 with st.sidebar:
@@ -267,8 +266,7 @@ with st.sidebar:
         st.rerun()
 
     if st.button("Sign out", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+        logout_user()
 
     sidebar_model(MODEL)
     sidebar_reminder("Secure workflow", "The API key remains server-side.")

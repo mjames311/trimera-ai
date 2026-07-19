@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 import streamlit as st
+from auth import logout_user
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 st.set_page_config(
 
@@ -22,7 +23,6 @@ load_dotenv()
 APP_TITLE = "Trimera Documentation QA"
 MANUAL_PATH = Path(os.getenv("TRIMERA_MANUAL_PATH", "Trimera_Documentation_Coding_Standards_Manual.docx"))
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
-TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 
 CORE_PROMPT = '''
 You are Trimera Documentation QA, an experienced outpatient psychiatry documentation auditor.
@@ -163,8 +163,10 @@ page_header(
 
 with st.sidebar:
     sidebar_label("Quick actions")
-    if st.button("Sign out"):
-        st.session_state.clear(); st.rerun()
+    if getattr(st.user, "is_logged_in", False):
+        st.caption(str(st.user.get("email", "")))
+        if st.button("Sign out"):
+            logout_user()
     sidebar_model(MODEL)
     sidebar_reminder("Secure environment", "The API key remains server-side.")
 

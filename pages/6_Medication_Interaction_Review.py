@@ -3,7 +3,7 @@ from typing import Any
 
 import streamlit as st
 from openai import OpenAI
-from auth import require_auth
+from auth import logout_user, require_auth
 from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
@@ -11,7 +11,6 @@ st.set_page_config(page_title="Medication Interaction Review", page_icon="💊",
 
 APP_TITLE = "Medication Interaction Review"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
-TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 API_KEY = os.getenv("OPENAI_API_KEY", "")
 SUPPORTED_FILE_TYPES = ["pdf", "docx", "txt", "rtf"]
 
@@ -152,7 +151,7 @@ def run_response(client: OpenAI) -> str:
 
 
 apply_trimera_theme()
-require_auth(TEST_PASSWORD, APP_TITLE, "Internal Trimera Health clinician tool")
+require_auth(APP_TITLE, "Internal Trimera Health clinician tool")
 initialize_state()
 render_topbar()
 
@@ -164,8 +163,7 @@ with st.sidebar:
             st.rerun()
     if st.button("Sign out", use_container_width=True):
         clear_review()
-        st.session_state.clear()
-        st.rerun()
+        logout_user()
     sidebar_model(MODEL)
     sidebar_reminder("Clinician review", "Confirm important findings against current prescribing information or a pharmacist.")
 

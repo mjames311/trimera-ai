@@ -4,7 +4,7 @@ from typing import Any
 import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
-from auth import require_auth
+from auth import logout_user, require_auth
 from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
@@ -16,7 +16,6 @@ st.set_page_config(
 )
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
-TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 MAX_FILES = 20
@@ -215,7 +214,7 @@ def reset_era_session() -> None:
 
 
 apply_trimera_theme()
-require_auth(TEST_PASSWORD, "Trimera ERA Analyzer", "Internal Trimera Health billing tool")
+require_auth("Trimera ERA Analyzer", "Internal Trimera Health billing tool")
 render_topbar()
 
 with st.sidebar:
@@ -225,8 +224,7 @@ with st.sidebar:
         st.rerun()
 
     if st.button("Sign out", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+        logout_user()
 
     sidebar_model(MODEL)
     sidebar_reminder("Packet review", "Upload related payer documents together for a consolidated review.")

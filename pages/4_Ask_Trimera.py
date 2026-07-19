@@ -3,7 +3,7 @@ from typing import Any
 
 import streamlit as st
 from openai import OpenAI
-from auth import require_auth
+from auth import logout_user, require_auth
 from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
@@ -15,7 +15,6 @@ st.set_page_config(
 )
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
-TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 SYSTEM_INSTRUCTIONS = (
@@ -102,9 +101,9 @@ def clear_conversation() -> None:
 
 
 def sign_out() -> None:
-    """Delete uploaded API files and clear the signed-in Streamlit session."""
+    """Delete uploaded API files and log out the current user."""
     delete_uploaded_openai_files()
-    st.session_state.clear()
+    logout_user()
 
 
 def validate_uploads(uploaded_files: list[Any]) -> None:
@@ -231,7 +230,7 @@ def render_message(message: dict[str, Any]) -> None:
 
 
 apply_trimera_theme()
-require_auth(TEST_PASSWORD, "Ask Trimera", "Internal Trimera Health tool")
+require_auth("Ask Trimera", "Internal Trimera Health tool")
 initialize_state()
 render_topbar()
 
@@ -243,7 +242,6 @@ with st.sidebar:
 
     if st.button("Sign out", use_container_width=True):
         sign_out()
-        st.rerun()
     sidebar_model(MODEL)
     sidebar_reminder("Private workspace", "Files and questions are handled through the configured server-side account.")
 

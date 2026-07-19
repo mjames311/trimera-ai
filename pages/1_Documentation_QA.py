@@ -10,7 +10,7 @@ from docx import Document
 from openai import OpenAI
 from pypdf import PdfReader
 from rapidfuzz import fuzz
-from auth import require_auth
+from auth import logout_user, require_auth
 from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import (
     apply_trimera_theme as apply_shared_theme,
@@ -573,7 +573,6 @@ def render_trimera_header() -> None:
 
 APP_TITLE = "Trimera Documentation QA"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
-TEST_PASSWORD = os.getenv("TRIMERA_QA_PASSWORD", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1153,7 +1152,7 @@ def reset_qa_session() -> None:
 
 
 apply_shared_theme()
-require_auth(TEST_PASSWORD, APP_TITLE, "Internal Trimera Health tool")
+require_auth(APP_TITLE, "Internal Trimera Health tool")
 render_topbar()
 
 with st.sidebar:
@@ -1162,8 +1161,7 @@ with st.sidebar:
         reset_qa_session()
         st.rerun()
     if st.button("Sign out", use_container_width=True):
-        st.session_state.clear()
-        st.rerun()
+        logout_user()
     sidebar_model(MODEL)
     sidebar_reminder("Reminder", "Code-level outcomes are determined by the fixed rules engine.")
 

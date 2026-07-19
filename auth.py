@@ -1,44 +1,103 @@
-"""Shared session authentication for protected Trimera tools."""
+"""Google Workspace authentication shared by protected Trimera tools."""
 
+import os
 import time
 
 import streamlit as st
 
 
 INACTIVITY_TIMEOUT_SECONDS = 30 * 60
-AUTHENTICATED_KEY = "authenticated"
+MAX_SESSION_SECONDS = 8 * 60 * 60
 LAST_ACTIVITY_KEY = "trimera_last_activity"
+SESSION_STARTED_KEY = "trimera_session_started"
+DEFAULT_ALLOWED_DOMAIN = "trimerahealth.net"
 
 
-def is_authenticated() -> bool:
-    """Return whether the current Streamlit session has a fresh login."""
-    if not st.session_state.get(AUTHENTICATED_KEY):
-        return False
-    last_activity = st.session_state.get(LAST_ACTIVITY_KEY, 0)
-    return time.time() - last_activity < INACTIVITY_TIMEOUT_SECONDS
+def _user_claims() -> dict:
+    """Return OIDC identity claims without exposing provider tokens."""
+    if not getattr(st.user, "is_logged_in", False):
+        return {}
+    return st.user.to_dict()
 
 
-def require_auth(password: str, title: str, caption: str) -> None:
-    """Require one login per session and expire it after 30 idle minutes."""
-    if is_authenticated():
-        st.session_state[LAST_ACTIVITY_KEY] = time.time()
+def _logout() -> None:
+    """Clear application state and remove the Streamlit identity cookie."""
+    st.session_state.clear()
+    st.logout()
+
+
+def logout_user() -> None:
+    """Log out the current user from Trimera."""
+    _logout()
+
+
+def current_user_email() -> str:
+    """Return the authenticated user's normalized email address."""
+    return str(_user_claims().get("email", "")).strip().lower()
+
+
+def _is_authorized_workspace_user(claims: dict) -> bool:
+    """Require a verified identity from the configured Google Workspace."""
+    allowed_domain = os.getenv(
+        "TRIMERA_ALLOWED_EMAIL_DOMAIN", DEFAULT_ALLOWED_DOMAIN
+    ).strip().lower()
+    email = str(claims.get("email", "")).strip().lower()
+    hosted_domain = str(claims.get("hd", "")).strip().lower()
+    email_verified = claims.get("email_verified") in (True, "true", "True", 1)
+    return (
+        email_verified
+        and email.endswith(f"@{allowed_domain}")
+        and hosted_domain == allowed_domain
+    )
+
+
+def _session_expired(claims: dict, now: float) -> bool:
+    """Enforce inactivity, absolute-session, and identity-token expiration."""
+    last_activity = st.session_state.get(LAST_ACTIVITY_KEY, now)
+    session_started = st.session_state.get(SESSION_STARTED_KEY, now)
+
+    try:
+        token_expired = now >= float(claims.get("exp", now + 1))
+    except (TypeError, ValueError):
+        token_expired = True
+
+    return (
+        now - last_activity >= INACTIVITY_TIMEOUT_SECONDS
+        or now - session_started >= MAX_SESSION_SECONDS
+        or token_expired
+    )
+
+
+@st.fragment(run_every="60s")
+def _session_watchdog() -> None:
+    """Log out idle sessions without waiting for the next user interaction."""
+    if not getattr(st.user, "is_logged_in", False):
         return
+    if _session_expired(_user_claims(), time.time()):
+        _logout()
 
-    if st.session_state.get(AUTHENTICATED_KEY):
-        st.session_state.clear()
-        st.info("Your session expired after 30 minutes of inactivity. Please sign in again.")
 
-    if not password:
-        st.error("TRIMERA_QA_PASSWORD is not configured.")
+def require_auth(title: str, caption: str) -> None:
+    """Require an authorized work account for a protected Trimera page."""
+    if not getattr(st.user, "is_logged_in", False):
+        st.title(title)
+        st.caption(caption)
+        st.info("Sign in with your Trimera Health work email to continue.")
+        st.button("Sign in with Google", type="primary", on_click=st.login)
         st.stop()
 
-    st.title(title)
-    st.caption(caption)
-    entered = st.text_input("Password", type="password", key="trimera_shared_password")
-    if st.button("Sign in", type="primary", key="trimera_shared_sign_in"):
-        if entered == password:
-            st.session_state[AUTHENTICATED_KEY] = True
-            st.session_state[LAST_ACTIVITY_KEY] = time.time()
-            st.rerun()
-        st.error("Incorrect password.")
-    st.stop()
+    claims = _user_claims()
+    if not _is_authorized_workspace_user(claims):
+        st.error("Access is limited to verified Trimera Health work accounts.")
+        st.button("Sign out", type="primary", on_click=logout_user)
+        st.stop()
+
+    now = time.time()
+    if _session_expired(claims, now):
+        st.session_state.clear()
+        st.warning("Your Trimera session expired. Please sign in again.")
+        st.logout()
+
+    st.session_state.setdefault(SESSION_STARTED_KEY, now)
+    st.session_state[LAST_ACTIVITY_KEY] = now
+    _session_watchdog()
