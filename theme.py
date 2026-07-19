@@ -96,11 +96,12 @@ html, body, [class*="css"] {{
   background: var(--trimera-gradient);
   box-shadow: 0 5px 18px rgba(13,27,46,.12);
 }}
-.trimera-wordmark {{ display:flex; align-items:center; gap:12px; color:#fff; }}
+.trimera-wordmark {{ display:flex; align-items:center; gap:12px; color:#fff !important; text-decoration:none !important; }}
+.trimera-wordmark:hover {{ color:#fff !important; text-decoration:none !important; }}
 .trimera-mark {{ width:38px; height:38px; flex:0 0 38px; display:block; }}
 .trimera-brand-copy {{ display:flex; flex-direction:column; justify-content:center; line-height:1; }}
 .trimera-brand-name {{ font-family:Georgia,serif; font-size:1.42rem; font-weight:700; letter-spacing:.005em; }}
-.trimera-brand-tagline {{ margin-top:5px; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.76rem; font-weight:700; letter-spacing:.045em; opacity:.98; }}
+.trimera-brand-tagline {{ margin-top:5px; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.92rem; font-weight:750; letter-spacing:.035em; opacity:1; }}
 .trimera-suite {{ display:flex; align-items:center; gap:11px; font-size:.91rem; font-weight:800; letter-spacing:.025em; text-transform:uppercase; }}
 .trimera-icon-svg {{ width:1em; height:1em; display:block; }}
 .trimera-suite-icon {{ font-size:1.32rem; }}
@@ -185,7 +186,7 @@ button[aria-label="Expand sidebar"] {{ display:none !important; visibility:hidde
 .trimera-reminder {{ margin:.45rem 0; padding:1rem; border:1px solid var(--trimera-border); border-radius:13px; background:#fff; box-shadow:0 7px 20px rgba(13,27,46,.06); font-size:.86rem; line-height:1.55; }}
 .trimera-reminder strong {{ display:block; color:#087ca9; margin-bottom:.42rem; }}
 
-.trimera-home-intro {{ margin:.2rem 0 1.2rem; color:var(--trimera-muted); font-size:1.02rem; line-height:1.65; max-width:980px; }}
+.trimera-home-intro {{ margin:.25rem auto 1.35rem; color:var(--trimera-muted); font-size:1.02rem; line-height:1.65; max-width:1080px; text-align:center; }}
 .trimera-section-title {{ margin:1.4rem 0 .75rem; color:var(--trimera-text); font-size:1.3rem; font-weight:800; letter-spacing:-.02em; }}
 .trimera-tool-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.85rem; margin-bottom:1.35rem; }}
 .trimera-tool-card {{ display:block; min-height:156px; padding:1.05rem; color:var(--trimera-text) !important; text-decoration:none !important; background:#fff; border:1px solid var(--trimera-border); border-radius:13px; box-shadow:0 5px 16px rgba(13,27,46,.055); transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }}
@@ -318,7 +319,7 @@ def render_topbar() -> None:
     st.markdown(
         f"""
 <div class="trimera-topbar">
-  <div class="trimera-wordmark">
+  <a class="trimera-wordmark" href="/" target="_self" aria-label="Go to Trimera AI Home">
     <svg class="trimera-mark" viewBox="0 0 100 88" role="img" aria-label="Trimera Health logo">
       <path d="M50 4 L96 84 H4 Z" fill="none" stroke="white" stroke-width="7" stroke-linejoin="round"/>
       <path d="M50 8 L73 47 H27 Z" fill="white" opacity=".30"/>
@@ -327,7 +328,7 @@ def render_topbar() -> None:
       <path d="M27 47 H73 L50 84 Z" fill="white" opacity=".88"/>
     </svg>
     <span class="trimera-brand-copy"><span class="trimera-brand-name">Trimera Health</span><span class="trimera-brand-tagline">Offering Hope for Healing</span></span>
-  </div>
+  </a>
   <div class="trimera-suite"><span class="trimera-suite-icon">{icon_svg("clinical")}</span><span>Trimera AI&nbsp; · &nbsp;Clinical Intelligence</span><span class="trimera-user">{icon_svg("user")}</span></div>
 </div>
 """,
