@@ -123,9 +123,9 @@ html, body, [class*="css"] {{
 [data-testid="stSidebarNav"] a[href="http://127.0.0.1:8501/"] p,
 [data-testid="stSidebarNav"] a[href="/"] p {{ font-size:0; }}
 [data-testid="stSidebarNav"] a[href="http://127.0.0.1:8501/"] p::after,
-[data-testid="stSidebarNav"] a[href="/"] p::after {{ content:"Trimera Home"; font-size:.875rem; }}
+[data-testid="stSidebarNav"] a[href="/"] p::after {{ content:"Home"; font-size:.875rem; }}
 [data-testid="stSidebarNav"] ul li:first-child p {{ font-size:0 !important; }}
-[data-testid="stSidebarNav"] ul li:first-child p::after {{ content:"Trimera Home"; font-size:.875rem !important; }}
+[data-testid="stSidebarNav"] ul li:first-child p::after {{ content:"Home"; font-size:.875rem !important; }}
 [data-testid="stSidebar"] [data-testid="stButton"] button {{
   min-height:39px;
   justify-content:flex-start;
@@ -141,6 +141,20 @@ html, body, [class*="css"] {{
 .trimera-model {{ display:inline-block; margin:.05rem 0 .85rem; padding:.55rem 1.2rem; border-radius:10px; background:linear-gradient(90deg,#eef8e9,#e8f7f1); color:#17263a; font-size:.83rem; font-weight:750; }}
 .trimera-reminder {{ margin:.45rem 0; padding:1rem; border:1px solid var(--trimera-border); border-radius:13px; background:#fff; box-shadow:0 7px 20px rgba(13,27,46,.06); font-size:.86rem; line-height:1.55; }}
 .trimera-reminder strong {{ display:block; color:#087ca9; margin-bottom:.42rem; }}
+
+.trimera-home-intro {{ margin:.2rem 0 1.2rem; color:var(--trimera-muted); font-size:1.02rem; line-height:1.65; max-width:980px; }}
+.trimera-section-title {{ margin:1.4rem 0 .75rem; color:var(--trimera-text); font-size:1.3rem; font-weight:800; letter-spacing:-.02em; }}
+.trimera-tool-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.85rem; margin-bottom:1.35rem; }}
+.trimera-tool-card {{ display:block; min-height:156px; padding:1.05rem; color:var(--trimera-text) !important; text-decoration:none !important; background:#fff; border:1px solid var(--trimera-border); border-radius:13px; box-shadow:0 5px 16px rgba(13,27,46,.055); transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }}
+.trimera-tool-card:hover {{ transform:translateY(-2px); border-color:#80caa2; box-shadow:0 9px 22px rgba(13,27,46,.09); }}
+.trimera-tool-icon {{ width:38px; height:38px; display:grid; place-items:center; margin-bottom:.65rem; color:#258f61; background:#edf8ed; border-radius:10px; font-size:1.2rem; }}
+.trimera-tool-name {{ margin-bottom:.32rem; color:var(--trimera-text); font-size:.96rem; font-weight:800; }}
+.trimera-tool-description {{ color:var(--trimera-muted); font-size:.82rem; line-height:1.48; }}
+.trimera-source-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.8rem; margin-bottom:1.25rem; }}
+.trimera-source-card {{ padding:1rem 1.05rem; background:linear-gradient(145deg,#fff,#f8fbfc); border:1px solid var(--trimera-border); border-radius:12px; }}
+.trimera-source-card strong {{ display:block; margin-bottom:.3rem; color:#08766f; font-size:.9rem; }}
+.trimera-source-card span {{ color:var(--trimera-muted); font-size:.82rem; line-height:1.5; }}
+.trimera-home-note {{ padding:.9rem 1rem; color:#294257; background:#edf7f1; border-left:4px solid var(--trimera-green); border-radius:9px; font-size:.84rem; line-height:1.5; }}
 
 .trimera-page-card {{
   position:relative;
@@ -235,6 +249,7 @@ thead tr {{ background:var(--trimera-navy) !important; color:white !important; }
   .trimera-page-card {{ padding:1.25rem 1rem 1.25rem 5.4rem; min-height:112px; }}
   .trimera-page-icon {{ left:1rem; width:58px; height:58px; font-size:1.9rem; }}
   .trimera-page-title {{ font-size:1.75rem; }}
+  .trimera-tool-grid, .trimera-source-grid {{ grid-template-columns:1fr; }}
 }}
 </style>
 """,

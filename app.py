@@ -175,9 +175,9 @@ def parse_codes(raw):
 password_gate()
 render_topbar()
 page_header(
-    "▣",
-    "Trimera AI Suite",
-    "Internal clinical intelligence and practice operations tools.",
+    "⌂",
+    "Home",
+    "Clinical intelligence and practice operations tools for Trimera Health.",
 )
 
 with st.sidebar:
@@ -187,36 +187,48 @@ with st.sidebar:
     sidebar_model(MODEL)
     sidebar_reminder("Secure environment", "The API key remains server-side.")
 
-try:
-    manual_chunks = split_manual(read_manual(str(MANUAL_PATH)))
-except Exception as exc:
-    st.error(str(exc)); st.stop()
-
-payer = st.selectbox("Payer", ["Not specified","Medicare","UnitedHealthcare / Optum","BCBS","Aetna","Cigna","Humana","Other"])
-codes_raw = st.text_input("Intended billing", placeholder="99214, 90833, G2211  OR  99215, 99417 x5")
-method = st.radio("Clinical note", ["Paste text","Upload PDF"], horizontal=True)
-note_text = ""
-if method == "Paste text":
-    note_text = st.text_area("Paste completed note", height=360)
-else:
-    uploaded = st.file_uploader("Upload completed note PDF", type=["pdf"])
-    if uploaded:
-        try: note_text = extract_pdf(uploaded); st.success("PDF text extracted.")
-        except Exception as exc: st.error(f"Could not read PDF: {exc}")
-
-if st.button("Run documentation QA", type="primary", use_container_width=True):
-    codes = parse_codes(codes_raw)
-    if not codes: st.error("Enter at least one intended code."); st.stop()
-    if not note_text.strip(): st.error("Paste or upload a note."); st.stop()
-    excerpts = relevant_excerpts(manual_chunks, codes, payer)
-    user_content = f"INTENDED BILLING:\n{chr(10).join(codes)}\n\nPAYER:\n{payer}\n\nRELEVANT MANUAL EXCERPTS:\n{excerpts}\n\nCOMPLETED CLINICAL NOTE:\n{note_text}"
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    with st.spinner("Reviewing documentation..."):
-        try:
-            response = client.responses.create(model=MODEL, instructions=CORE_PROMPT, input=user_content)
-            result = response.output_text
-        except Exception as exc:
-            st.error(f"OpenAI request failed: {exc}"); st.stop()
-    st.subheader("QA result")
-    st.text_area("Report", value=result, height=620)
-    st.download_button("Download report", data=result, file_name="trimera_documentation_qa.txt", mime="text/plain", use_container_width=True)
+st.markdown(
+    """
+    <p class="trimera-home-intro">
+      Trimera AI brings clinical documentation, payer review, billing analysis,
+      medication safety, and general practice intelligence into one secure internal workspace.
+      Choose a tool below based on the task you need to complete.
+    </p>
+    <div class="trimera-section-title">Available tools</div>
+    <div class="trimera-tool-grid">
+      <a class="trimera-tool-card" href="/Documentation_QA">
+        <div class="trimera-tool-icon">▣</div><div class="trimera-tool-name">Documentation QA</div>
+        <div class="trimera-tool-description">Checks whether a completed note supports the intended billing using extracted facts, fixed coding rules, and governing references.</div>
+      </a>
+      <a class="trimera-tool-card" href="/PA_Extractor">
+        <div class="trimera-tool-icon">♙</div><div class="trimera-tool-name">Prior Authorization Assistant</div>
+        <div class="trimera-tool-description">Reviews TMS and Spravato authorization documents for requirements, missing information, and next steps.</div>
+      </a>
+      <a class="trimera-tool-card" href="/ERA_Analyzer">
+        <div class="trimera-tool-icon">⌁</div><div class="trimera-tool-name">ERA Analyzer</div>
+        <div class="trimera-tool-description">Analyzes ERA, remittance, and claim-detail files to clarify payments, denials, adjustments, and follow-up actions.</div>
+      </a>
+      <a class="trimera-tool-card" href="/Ask_Trimera">
+        <div class="trimera-tool-icon">▤</div><div class="trimera-tool-name">Ask Trimera</div>
+        <div class="trimera-tool-description">Answers general operational questions, analyzes attached files, and can optionally search the web when enabled.</div>
+      </a>
+      <a class="trimera-tool-card" href="/BCBS_Appeal_Builder">
+        <div class="trimera-tool-icon">♢</div><div class="trimera-tool-name">BCBS Appeal Builder</div>
+        <div class="trimera-tool-description">Matches downcoded claims to encounter notes, builds appeal packets, and prepares tracker updates.</div>
+      </a>
+      <a class="trimera-tool-card" href="/Medication_Interaction_Review">
+        <div class="trimera-tool-icon">♧</div><div class="trimera-tool-name">Medication Interaction Review</div>
+        <div class="trimera-tool-description">Extracts the current medication list and reviews interactions, safety concerns, monitoring needs, and follow-up questions.</div>
+      </a>
+    </div>
+    <div class="trimera-section-title">How answers are grounded</div>
+    <div class="trimera-source-grid">
+      <div class="trimera-source-card"><strong>Authoritative reference library</strong><span>Where applicable, tools use embedded CMS and Medicare guidance, AMA coding guidance, payer medical policies, TMS and Spravato criteria, and Trimera documentation standards.</span></div>
+      <div class="trimera-source-card"><strong>Your uploaded records</strong><span>Clinical notes, authorization documents, ERA files, remittance reports, trackers, and other attachments provide the case-specific facts used in each review.</span></div>
+      <div class="trimera-source-card"><strong>Fixed rules and safeguards</strong><span>Documentation QA uses deterministic code-level rules after fact extraction. The AI does not independently change billing outcomes or invent undocumented facts.</span></div>
+      <div class="trimera-source-card"><strong>Optional current web sources</strong><span>Ask Trimera can search current internet sources only when “Search the web” is enabled. Other tools do not silently rely on live web search.</span></div>
+    </div>
+    <div class="trimera-home-note"><strong>Important:</strong> Not every tool uses every source. Results should be reviewed in context, and clinical, coding, and payer decisions remain subject to professional verification and the most current governing guidance.</div>
+    """,
+    unsafe_allow_html=True,
+)
