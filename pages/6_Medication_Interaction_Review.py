@@ -189,8 +189,6 @@ page_header(
     "Medication Interaction Review",
     "Upload or paste one patient note, then continue with patient-specific follow-up questions.",
 )
-st.warning("Clinician review required. Confirm the active medication list and verify important findings against current prescribing information or a pharmacist.")
-
 if not st.session_state["med_chat_messages"]:
     uploaded_note = st.file_uploader("Upload patient note", type=SUPPORTED_FILE_TYPES, accept_multiple_files=False, help="Supported formats: PDF, DOCX, TXT, and RTF.")
     st.markdown("**Or paste the note**")

@@ -259,11 +259,6 @@ page_header(
     "Upload ERA, remittance, or claim-detail PDFs for a consolidated payment review.",
 )
 
-st.warning(
-    "Prototype environment: use fictional or fully de-identified documents "
-    "until all required BAAs and production safeguards are active."
-)
-
 uploaded_files = st.file_uploader(
     "Upload ERA or claim-detail PDFs",
     type=["pdf"],

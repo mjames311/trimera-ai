@@ -179,7 +179,11 @@ html, body, [class*="css"] {{
 h1, h2, h3, h4 {{ color:var(--trimera-text); letter-spacing:-.022em; }}
 h1 {{ font-size:2.25rem; font-weight:800; }}
 h2 {{ font-size:1.45rem; }}
+h1, h2, h3 {{ margin-top:.8rem !important; margin-bottom:.38rem !important; }}
+h4 {{ margin-top:.65rem !important; margin-bottom:.3rem !important; }}
 p, label, .stMarkdown {{ color:var(--trimera-text); }}
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] {{ gap:.72rem; }}
+[data-testid="stMainBlockContainer"] [data-testid="stMarkdownContainer"] p {{ margin-bottom:.45rem; line-height:1.48; }}
 hr {{ margin:1.5rem 0; border-color:var(--trimera-border); }}
 
 [data-testid="stWidgetLabel"] p {{ font-weight:650; color:var(--trimera-text); }}
