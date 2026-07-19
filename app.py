@@ -177,27 +177,27 @@ st.markdown(
     </p>
     <div class="trimera-section-title">Available tools</div>
     <div class="trimera-tool-grid">
-      <a class="trimera-tool-card" href="/Documentation_QA">
+      <a class="trimera-tool-card" href="/Documentation_QA" target="_self">
         <div class="trimera-tool-icon">▣</div><div class="trimera-tool-name">Documentation QA</div>
         <div class="trimera-tool-description">Checks whether a completed note supports the intended billing using extracted facts, fixed coding rules, and governing references.</div>
       </a>
-      <a class="trimera-tool-card" href="/PA_Extractor">
+      <a class="trimera-tool-card" href="/PA_Extractor" target="_self">
         <div class="trimera-tool-icon">♙</div><div class="trimera-tool-name">Prior Authorization Assistant</div>
         <div class="trimera-tool-description">Reviews TMS and Spravato authorization documents for requirements, missing information, and next steps.</div>
       </a>
-      <a class="trimera-tool-card" href="/ERA_Analyzer">
+      <a class="trimera-tool-card" href="/ERA_Analyzer" target="_self">
         <div class="trimera-tool-icon">⌁</div><div class="trimera-tool-name">ERA Analyzer</div>
         <div class="trimera-tool-description">Analyzes ERA, remittance, and claim-detail files to clarify payments, denials, adjustments, and follow-up actions.</div>
       </a>
-      <a class="trimera-tool-card" href="/Ask_Trimera">
+      <a class="trimera-tool-card" href="/Ask_Trimera" target="_self">
         <div class="trimera-tool-icon">▤</div><div class="trimera-tool-name">Ask Trimera</div>
         <div class="trimera-tool-description">Answers general operational questions, analyzes attached files, and automatically researches reputable current sources when useful.</div>
       </a>
-      <a class="trimera-tool-card" href="/BCBS_Appeal_Builder">
+      <a class="trimera-tool-card" href="/BCBS_Appeal_Builder" target="_self">
         <div class="trimera-tool-icon">♢</div><div class="trimera-tool-name">BCBS Appeal Builder</div>
         <div class="trimera-tool-description">Matches downcoded claims to encounter notes, builds appeal packets, and prepares tracker updates.</div>
       </a>
-      <a class="trimera-tool-card" href="/Medication_Interaction_Review">
+      <a class="trimera-tool-card" href="/Medication_Interaction_Review" target="_self">
         <div class="trimera-tool-icon">♧</div><div class="trimera-tool-name">Medication Interaction Review</div>
         <div class="trimera-tool-description">Extracts the current medication list and reviews interactions, safety concerns, monitoring needs, and follow-up questions.</div>
       </a>
