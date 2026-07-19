@@ -35,8 +35,17 @@ def apply_trimera_theme() -> None:
   --trimera-gradient: linear-gradient(100deg, #7dcc48 0%, #61c565 24%, #0ba1bd 61%, #0785db 100%);
 }}
 
+html, body {{
+  background: {TRIMERA_BACKGROUND};
+  color: var(--trimera-text);
+}}
+
 html, body, [class*="css"] {{
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}}
+
+[data-testid="stApp"], .stApp {{
+  background: {TRIMERA_BACKGROUND};
 }}
 
 [data-testid="stAppViewContainer"] {{
