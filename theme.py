@@ -101,7 +101,7 @@ html, body, [class*="css"] {{
 .trimera-mark {{ width:38px; height:38px; flex:0 0 38px; display:block; }}
 .trimera-brand-copy {{ display:flex; flex-direction:column; justify-content:center; line-height:1; }}
 .trimera-brand-name {{ font-family:Georgia,serif; font-size:1.42rem; font-weight:700; letter-spacing:.005em; }}
-.trimera-brand-tagline {{ margin-top:5px; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.62rem; font-weight:650; letter-spacing:.055em; opacity:.94; }}
+.trimera-brand-tagline {{ margin-top:5px; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.76rem; font-weight:700; letter-spacing:.045em; opacity:.98; }}
 .trimera-suite {{ display:flex; align-items:center; gap:11px; font-size:.91rem; font-weight:800; letter-spacing:.025em; text-transform:uppercase; }}
 .trimera-icon-svg {{ width:1em; height:1em; display:block; }}
 .trimera-suite-icon {{ font-size:1.32rem; }}
