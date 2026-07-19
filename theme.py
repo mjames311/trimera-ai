@@ -171,6 +171,10 @@ hr {{ margin:1.5rem 0; border-color:var(--trimera-border); }}
 [data-testid="stWidgetLabel"] p {{ font-weight:650; color:var(--trimera-text); }}
 [data-baseweb="input"] > div, [data-baseweb="textarea"] > div, [data-baseweb="select"] > div,
 .stTextInput input, .stTextArea textarea {{ border-radius:10px !important; border-color:#d4dee7 !important; background:#fff !important; color:var(--trimera-text) !important; }}
+.stTextInput input, .stTextArea textarea,
+[data-testid="stSelectbox"] input {{ -webkit-text-fill-color:var(--trimera-text) !important; opacity:1 !important; }}
+.stTextInput input::placeholder, .stTextArea textarea::placeholder,
+[data-testid="stSelectbox"] input::placeholder {{ color:#718398 !important; -webkit-text-fill-color:#718398 !important; opacity:1 !important; }}
 [data-testid="stSelectbox"] div[data-baseweb="select"] > div {{ background:#fff !important; color:var(--trimera-text) !important; border-color:#d4dee7 !important; }}
 [data-testid="stSelectbox"] div[data-baseweb="select"] * {{ color:var(--trimera-text) !important; fill:var(--trimera-text) !important; }}
 [data-testid="stSelectbox"] [role="group"],
@@ -178,8 +182,8 @@ hr {{ margin:1.5rem 0; border-color:var(--trimera-border); }}
 [data-testid="stSelectbox"] [role="group"] button {{ background:#fff !important; color:var(--trimera-text) !important; border-color:#d4dee7 !important; }}
 [data-testid="stSelectbox"] [role="group"] {{ border:1px solid #d4dee7 !important; border-radius:10px !important; overflow:hidden; }}
 [data-baseweb="input"] > div:focus-within, [data-baseweb="textarea"] > div:focus-within {{ border-color:var(--trimera-green) !important; box-shadow:0 0 0 1px var(--trimera-blue) !important; }}
-.stTextInput input:focus, .stTextArea textarea:focus {{ background:var(--trimera-navy) !important; color:white !important; caret-color:white; }}
-.stTextInput input:focus::placeholder, .stTextArea textarea:focus::placeholder {{ color:#aebdca !important; }}
+.stTextInput input:focus, .stTextArea textarea:focus {{ background:var(--trimera-navy) !important; color:white !important; -webkit-text-fill-color:white !important; caret-color:white; }}
+.stTextInput input:focus::placeholder, .stTextArea textarea:focus::placeholder {{ color:#c5d1dc !important; -webkit-text-fill-color:#c5d1dc !important; opacity:1 !important; }}
 [data-baseweb="radio"] [aria-checked="true"] {{ background-color:var(--trimera-green) !important; border-color:var(--trimera-green) !important; }}
 input[type="radio"] {{ accent-color:var(--trimera-green) !important; }}
 [data-testid="stRadio"] [role="radio"][aria-checked="true"] {{ border-color:var(--trimera-green) !important; background:var(--trimera-green) !important; }}
@@ -190,6 +194,9 @@ input[type="radio"] {{ accent-color:var(--trimera-green) !important; }}
 [data-testid="stFileUploaderDropzone"] {{ background:var(--trimera-navy); border:0; border-radius:9px; min-height:74px; }}
 [data-testid="stFileUploaderDropzone"] *, [data-testid="stFileUploaderFile"] * {{ color:white !important; }}
 [data-testid="stFileUploaderDropzone"] button {{ background:#fff !important; color:var(--trimera-text) !important; border-radius:8px; }}
+[data-testid="stFileUploaderDropzone"] button *,
+[data-testid="stFileUploaderDropzone"] button p,
+[data-testid="stFileUploaderDropzone"] button span {{ color:var(--trimera-navy) !important; -webkit-text-fill-color:var(--trimera-navy) !important; opacity:1 !important; }}
 
 div.stButton > button, div.stDownloadButton > button {{
   min-height:48px;
@@ -210,7 +217,12 @@ div.stButton > button[kind="primary"], div.stDownloadButton > button[kind="prima
 [data-testid="stExpander"], [data-testid="stMetric"], [data-testid="stDataFrame"], [data-testid="stTable"] {{ border-radius:12px; overflow:hidden; border-color:var(--trimera-border); }}
 [data-testid="stMetric"] {{ background:white; padding:1rem; border:1px solid var(--trimera-border); }}
 [data-testid="stChatMessage"] {{ background:#fff; border:1px solid var(--trimera-border); border-radius:13px; margin:.55rem 0; padding:.55rem .75rem; }}
-[data-testid="stChatInput"] {{ border-radius:12px; border:1px solid var(--trimera-border); background:#fff; }}
+[data-testid="stBottom"] {{ min-height:72px !important; padding:.5rem 1.25rem !important; background:#0b1019 !important; }}
+[data-testid="stBottom"] > div {{ min-height:0 !important; padding:.2rem 0 !important; }}
+[data-testid="stChatInput"] {{ min-height:48px !important; border-radius:12px; border:1px solid #8a98aa !important; background:#252834 !important; }}
+[data-testid="stChatInput"] textarea {{ min-height:46px !important; height:46px !important; color:white !important; -webkit-text-fill-color:white !important; caret-color:white !important; opacity:1 !important; }}
+[data-testid="stChatInput"] textarea::placeholder {{ color:#c5d1dc !important; -webkit-text-fill-color:#c5d1dc !important; opacity:1 !important; }}
+[data-testid="stChatInput"] button {{ color:white !important; }}
 thead tr {{ background:var(--trimera-navy) !important; color:white !important; }}
 
 @media (max-width: 900px) {{
