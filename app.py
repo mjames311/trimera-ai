@@ -93,24 +93,6 @@ Final Assessment
 '''.strip()
 
 
-def password_gate() -> None:
-    if not TEST_PASSWORD:
-        st.warning("Set TRIMERA_QA_PASSWORD in your .env file.")
-        st.stop()
-    if st.session_state.get("authenticated"):
-        return
-    st.title(APP_TITLE)
-    st.caption("Internal test environment — fictional or fully de-identified notes only.")
-    entered = st.text_input("Password", type="password")
-    if st.button("Sign in", type="primary"):
-        if entered == TEST_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
-    st.stop()
-
-
 @st.cache_data(show_spinner=False)
 def read_manual(path_str: str) -> str:
     path = Path(path_str)
@@ -172,7 +154,6 @@ def parse_codes(raw):
     return [p.strip() for p in re.split(r"[\n,;]+", raw) if p.strip()]
 
 
-password_gate()
 render_topbar()
 page_header(
     "⌂",
@@ -210,7 +191,7 @@ st.markdown(
       </a>
       <a class="trimera-tool-card" href="/Ask_Trimera">
         <div class="trimera-tool-icon">▤</div><div class="trimera-tool-name">Ask Trimera</div>
-        <div class="trimera-tool-description">Answers general operational questions, analyzes attached files, and can optionally search the web when enabled.</div>
+        <div class="trimera-tool-description">Answers general operational questions, analyzes attached files, and automatically researches reputable current sources when useful.</div>
       </a>
       <a class="trimera-tool-card" href="/BCBS_Appeal_Builder">
         <div class="trimera-tool-icon">♢</div><div class="trimera-tool-name">BCBS Appeal Builder</div>
@@ -226,9 +207,9 @@ st.markdown(
       <div class="trimera-source-card"><strong>Authoritative reference library</strong><span>Where applicable, tools use embedded CMS and Medicare guidance, AMA coding guidance, payer medical policies, TMS and Spravato criteria, and Trimera documentation standards.</span></div>
       <div class="trimera-source-card"><strong>Your uploaded records</strong><span>Clinical notes, authorization documents, ERA files, remittance reports, trackers, and other attachments provide the case-specific facts used in each review.</span></div>
       <div class="trimera-source-card"><strong>Fixed rules and safeguards</strong><span>Documentation QA uses deterministic code-level rules after fact extraction. The AI does not independently change billing outcomes or invent undocumented facts.</span></div>
-      <div class="trimera-source-card"><strong>Optional current web sources</strong><span>Ask Trimera can search current internet sources only when “Search the web” is enabled. Other tools do not silently rely on live web search.</span></div>
+      <div class="trimera-source-card"><strong>Automatic current web research</strong><span>Analytical and conversational tools can automatically research current reputable sources when embedded or uploaded guidance does not fully resolve a question. Web-derived claims are identified and cited.</span></div>
     </div>
-    <div class="trimera-home-note"><strong>Important:</strong> Not every tool uses every source. Results should be reviewed in context, and clinical, coding, and payer decisions remain subject to professional verification and the most current governing guidance.</div>
+    <div class="trimera-home-note"><strong>Access and safeguards:</strong> Home is available without a password. One sign-in unlocks all protected tools for the current app session and expires after 30 minutes of inactivity. Uploaded records remain the sole source of patient-specific facts; external research adds current context but does not invent missing documentation, override fixed QA findings, or replace professional review.</div>
     """,
     unsafe_allow_html=True,
 )

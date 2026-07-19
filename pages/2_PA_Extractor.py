@@ -4,6 +4,8 @@ from typing import List
 import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
+from auth import require_auth
+from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
@@ -233,29 +235,6 @@ Do not guarantee authorization.
 """.strip()
 
 
-def password_gate() -> None:
-    if not TEST_PASSWORD:
-        st.warning("TRIMERA_QA_PASSWORD is not configured.")
-        st.stop()
-
-    if st.session_state.get("authenticated"):
-        return
-
-    st.title(APP_TITLE)
-    st.caption("Internal Trimera Health tool")
-
-    entered = st.text_input("Password", type="password")
-
-    if st.button("Sign in", type="primary"):
-        if entered == TEST_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
-
-    st.stop()
-
-
 def extract_pdf(uploaded_file) -> str:
     reader = PdfReader(uploaded_file)
     pages: List[str] = []
@@ -278,7 +257,7 @@ def reset_pa_session() -> None:
 
 
 apply_trimera_theme()
-password_gate()
+require_auth(TEST_PASSWORD, APP_TITLE, "Internal Trimera Health tool")
 render_topbar()
 
 with st.sidebar:
@@ -351,8 +330,9 @@ if st.button(
         try:
             response = client.responses.create(
                 model=MODEL,
-                instructions=instructions,
+                instructions=with_web_research(instructions),
                 input=document_text,
+                tools=WEB_SEARCH_TOOLS,
             )
             report = response.output_text
         except Exception as exc:
@@ -396,6 +376,7 @@ if st.session_state.get("pa_report"):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
+    st.caption("Trimera automatically checks current authoritative payer and clinical sources when relevant and cites web-derived information.")
     followup_question = st.chat_input(
         "Ask a follow-up about this prior authorization..."
     )
@@ -437,8 +418,9 @@ FOLLOW-UP CONVERSATION:
                 try:
                     response = client.responses.create(
                         model=MODEL,
-                        instructions=FOLLOWUP_PROMPT,
+                        instructions=with_web_research(FOLLOWUP_PROMPT),
                         input=followup_context,
+                        tools=WEB_SEARCH_TOOLS,
                     )
                     answer = response.output_text
                     st.markdown(answer)

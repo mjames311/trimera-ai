@@ -10,6 +10,8 @@ from docx import Document
 from openai import OpenAI
 from pypdf import PdfReader
 from rapidfuzz import fuzz
+from auth import require_auth
+from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import (
     apply_trimera_theme as apply_shared_theme,
     page_header as shared_page_header,
@@ -719,24 +721,6 @@ Never invent facts. Clearly distinguish documented facts from missing items. You
 """.strip()
 
 
-def password_gate() -> None:
-    if not TEST_PASSWORD:
-        st.warning("TRIMERA_QA_PASSWORD is not configured.")
-        st.stop()
-    if st.session_state.get("authenticated"):
-        return
-    st.title(APP_TITLE)
-    st.caption("Internal Trimera Health tool")
-    entered = st.text_input("Password", type="password")
-    if st.button("Sign in", type="primary"):
-        if entered == TEST_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
-    st.stop()
-
-
 @st.cache_data(show_spinner=False)
 def read_pdf(path_str: str) -> str:
     """Read a reference PDF only when a QA run actually needs it."""
@@ -1169,7 +1153,7 @@ def reset_qa_session() -> None:
 
 
 apply_shared_theme()
-password_gate()
+require_auth(TEST_PASSWORD, APP_TITLE, "Internal Trimera Health tool")
 render_topbar()
 
 with st.sidebar:
@@ -1250,7 +1234,12 @@ if st.button("Run documentation QA", type="primary", use_container_width=True):
     explanation_input = f"PAYER:\n{payer}\n\nINTENDED BILLING:\n{json.dumps(codes, indent=2)}\n\nFIXED CODE FINDINGS:\n{json.dumps(findings, indent=2)}\n\nEXTRACTED FACTS:\n{json.dumps(facts, indent=2)}\n\nGOVERNING EXCERPTS:\n{excerpts}\n\nCOMPLETED NOTE:\n{note_text}"
     with st.spinner("Writing grounded feedback..."):
         try:
-            explanation_response = client.responses.create(model=MODEL, instructions=EXPLANATION_PROMPT, input=explanation_input)
+            explanation_response = client.responses.create(
+                model=MODEL,
+                instructions=with_web_research(EXPLANATION_PROMPT),
+                input=explanation_input,
+                tools=WEB_SEARCH_TOOLS,
+            )
             explanations = clean_json(explanation_response.output_text)
         except Exception as exc:
             explanations = {"code_explanations": {}, "quality_improvements": [], "final_assessment": f"The fixed rules engine completed the review, but the explanation layer failed: {exc}"}
@@ -1267,7 +1256,7 @@ if st.session_state.get("qa_result"):
         st.json(st.session_state["qa_facts"])
     st.divider()
     st.subheader("💬 Ask Trimera about this QA review")
-    st.caption("Ask why a fixed result was reached, what documentation is missing, or request concise provider education.")
+    st.caption("Ask why a fixed result was reached, what documentation is missing, or request concise provider education. Trimera automatically checks reputable current web sources when they add relevant context and cites web-derived information.")
     for message in st.session_state.get("qa_followup_messages", []):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -1282,7 +1271,7 @@ if st.session_state.get("qa_result"):
         with st.chat_message("assistant"):
             with st.spinner("Reviewing the fixed QA result..."):
                 try:
-                    response = client.responses.create(model=MODEL, instructions=FOLLOWUP_PROMPT, input=followup_context)
+                    response = client.responses.create(model=MODEL, instructions=with_web_research(FOLLOWUP_PROMPT), input=followup_context, tools=WEB_SEARCH_TOOLS)
                     answer = response.output_text
                     st.markdown(answer)
                 except Exception as exc:

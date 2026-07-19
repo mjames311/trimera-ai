@@ -13,6 +13,7 @@ import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader, PdfWriter
 from rapidfuzz import fuzz
+from auth import require_auth
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import letter
@@ -519,29 +520,6 @@ def tracker_copy_table(
         "\t".join(str(value) for value in row)
         for row in rows
     )
-
-def password_gate() -> None:
-    if not TEST_PASSWORD:
-        st.warning("TRIMERA_QA_PASSWORD is not configured.")
-        st.stop()
-
-    if st.session_state.get("authenticated"):
-        return
-
-    st.title(APP_TITLE)
-    st.caption("Internal Trimera Health tool")
-
-    entered = st.text_input("Password", type="password")
-
-    if st.button("Sign in", type="primary"):
-        if entered == TEST_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        else:
-            st.error("Incorrect password.")
-
-    st.stop()
-
 
 def money_to_float(value: Any) -> float:
     if pd.isna(value):
@@ -1170,7 +1148,7 @@ def merge_pdfs(first_pdf: bytes, second_pdf: bytes) -> bytes:
 
 
 apply_trimera_theme()
-password_gate()
+require_auth(TEST_PASSWORD, APP_TITLE, "Internal Trimera Health tool")
 render_topbar()
 
 with st.sidebar:

@@ -3,6 +3,8 @@ from typing import Any
 
 import streamlit as st
 from openai import OpenAI
+from auth import require_auth
+from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
@@ -51,28 +53,6 @@ def get_client() -> OpenAI:
         st.stop()
 
     return OpenAI(api_key=API_KEY)
-
-
-def password_gate() -> None:
-    """Require the shared Trimera password before displaying the application."""
-    if st.session_state.get("authenticated"):
-        return
-
-    if not TEST_PASSWORD:
-        st.error("TRIMERA_QA_PASSWORD not configured.")
-        st.stop()
-
-    st.title("Ask Trimera")
-    password = st.text_input("Password", type="password")
-
-    if st.button("Sign in", type="primary"):
-        if password == TEST_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-
-        st.error("Incorrect password.")
-
-    st.stop()
 
 
 def initialize_state() -> None:
@@ -251,18 +231,12 @@ def render_message(message: dict[str, Any]) -> None:
 
 
 apply_trimera_theme()
-password_gate()
+require_auth(TEST_PASSWORD, "Ask Trimera", "Internal Trimera Health tool")
 initialize_state()
 render_topbar()
 
 with st.sidebar:
     sidebar_label("Quick actions")
-    use_web = st.toggle(
-        "Search the web",
-        value=False,
-        key="ask_trimera_use_web",
-    )
-
     if st.button("Clear conversation", use_container_width=True):
         clear_conversation()
         st.rerun()
@@ -289,6 +263,8 @@ uploaded_files = st.file_uploader(
         f"size under {MAX_TOTAL_UPLOAD_MB} MB."
     ),
 )
+
+st.caption("Current reputable web research is automatic when it can improve the answer. Web-derived information is identified and cited.")
 
 for saved_message in st.session_state["messages"]:
     render_message(saved_message)
@@ -324,12 +300,9 @@ if question:
     request_kwargs: dict[str, Any] = {
         "model": MODEL,
         "input": build_responses_input(),
-        "instructions": SYSTEM_INSTRUCTIONS,
+        "instructions": with_web_research(SYSTEM_INSTRUCTIONS),
+        "tools": WEB_SEARCH_TOOLS,
     }
-
-    # Web search availability depends on the selected model and account.
-    if use_web:
-        request_kwargs["tools"] = [{"type": "web_search"}]
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):

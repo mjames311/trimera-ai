@@ -3,6 +3,8 @@ from typing import Any
 
 import streamlit as st
 from openai import OpenAI
+from auth import require_auth
+from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 st.set_page_config(page_title="Medication Interaction Review", page_icon="💊", layout="wide")
@@ -78,23 +80,6 @@ initial report unless requested.
 """.strip()
 
 
-def password_gate() -> None:
-    if st.session_state.get("authenticated"):
-        return
-    if not TEST_PASSWORD:
-        st.error("TRIMERA_QA_PASSWORD is not configured.")
-        st.stop()
-    st.title(APP_TITLE)
-    st.caption("Internal Trimera Health clinician tool")
-    entered = st.text_input("Password", type="password")
-    if st.button("Sign in", type="primary"):
-        if entered == TEST_PASSWORD:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        st.error("Incorrect password.")
-    st.stop()
-
-
 def initialize_state() -> None:
     st.session_state.setdefault("med_chat_messages", [])
     st.session_state.setdefault("med_note_file_id", None)
@@ -162,12 +147,12 @@ def build_api_input() -> list[dict[str, Any]]:
 
 
 def run_response(client: OpenAI) -> str:
-    response = client.responses.create(model=MODEL, instructions=SYSTEM_INSTRUCTIONS, input=build_api_input())
+    response = client.responses.create(model=MODEL, instructions=with_web_research(SYSTEM_INSTRUCTIONS), input=build_api_input(), tools=WEB_SEARCH_TOOLS)
     return response.output_text or "No response was returned."
 
 
 apply_trimera_theme()
-password_gate()
+require_auth(TEST_PASSWORD, APP_TITLE, "Internal Trimera Health clinician tool")
 initialize_state()
 render_topbar()
 
@@ -221,6 +206,7 @@ else:
     for message in st.session_state["med_chat_messages"]:
         with st.chat_message(message["role"]):
             st.markdown(message.get("display_content", message["content"]))
+    st.caption("Trimera automatically checks current authoritative medication sources when relevant and cites web-derived information.")
     follow_up = st.chat_input("Ask a follow-up about the medications or interaction review...")
     if follow_up:
         client = get_client()
