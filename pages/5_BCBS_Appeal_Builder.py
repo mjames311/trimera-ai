@@ -5,6 +5,7 @@ import re
 import zipfile
 from copy import deepcopy
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
@@ -41,6 +42,9 @@ st.set_page_config(
 APP_TITLE = "BCBS Appeal Packet Builder"
 API_KEY = os.getenv("OPENAI_API_KEY", "")
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
+DEFAULT_APPEAL_TEMPLATE_PATH = (
+    Path(__file__).resolve().parents[1] / "Assets" / "APPEAL.template.docx"
+)
 
 AMOUNT_TO_CODE = {
     25.00: "G2211",
@@ -1179,19 +1183,16 @@ report_files = st.file_uploader(
     ),
 )
 
-template_file = st.file_uploader(
-    "2. Upload BCBS appeal Word template",
-    type=["docx"],
-)
+st.caption("The approved Trimera BCBS appeal template is included automatically.")
 
 note_files = st.file_uploader(
-    "3. Upload encounter-note PDFs",
+    "2. Upload encounter-note PDFs",
     type=["pdf"],
     accept_multiple_files=True,
 )
 
 tracker_file = st.file_uploader(
-    "4. Upload current BCBS tracker (optional)",
+    "3. Upload current BCBS tracker (optional)",
     type=["xlsx"],
     help=(
         "Upload the current tracker to receive a new copy with all newly "
@@ -1204,7 +1205,7 @@ appeal_date = st.date_input(
     value=date.today(),
 )
 
-if report_files and template_file and note_files:
+if report_files and note_files:
     try:
         report_frames = []
 
@@ -1416,7 +1417,14 @@ if report_files and template_file and note_files:
         type="primary",
         use_container_width=True,
     ):
-        template_bytes = template_file.getvalue()
+        try:
+            template_bytes = DEFAULT_APPEAL_TEMPLATE_PATH.read_bytes()
+        except OSError:
+            st.error(
+                "The approved BCBS appeal template is unavailable. "
+                "Please contact the Trimera AI administrator."
+            )
+            st.stop()
         logo_bytes, signature_bytes = extract_docx_images(template_bytes)
 
         zip_output = io.BytesIO()
