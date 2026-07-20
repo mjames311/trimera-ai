@@ -183,7 +183,7 @@ st.markdown(
       </a>
       <a class="trimera-tool-card" href="/PA_Extractor" target="_self">
         <div class="trimera-tool-icon">{icon_svg("authorization")}</div><div class="trimera-tool-name">Prior Authorization Assistant</div>
-        <div class="trimera-tool-description">Reviews TMS and Spravato authorization documents for requirements, missing information, and next steps.</div>
+        <div class="trimera-tool-description">Reviews TMS, Spravato, and medication authorization documentation for payer requirements, missing information, and next steps.</div>
       </a>
       <a class="trimera-tool-card" href="/ERA_Analyzer" target="_self">
         <div class="trimera-tool-icon">{icon_svg("era")}</div><div class="trimera-tool-name">ERA Analyzer</div>

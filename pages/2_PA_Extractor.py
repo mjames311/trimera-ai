@@ -1,5 +1,8 @@
+import json
 import os
 from typing import List
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 import streamlit as st
 from openai import OpenAI
@@ -10,13 +13,13 @@ from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label
 
 
 st.set_page_config(
-    page_title="TRD Prior Authorization Assistant",
+    page_title="Prior Authorization Assistant",
     page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-APP_TITLE = "TRD Prior Authorization Assistant"
+APP_TITLE = "Prior Authorization Assistant"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
@@ -234,6 +237,118 @@ appeal outlines, internal notes, and checklists.
 Do not guarantee authorization.
 """.strip()
 
+MEDICATION_RULES = """
+You are Trimera Health's medication prior-authorization readiness assistant.
+
+Review the uploaded provider note for the specifically requested medication. The
+uploaded note is the only source of patient-specific facts. Never invent a
+diagnosis, medication trial, dose, date, duration, response, adverse effect,
+contraindication, lab result, insurance detail, or provider statement.
+
+Research current requirements automatically. Prioritize the named payer's own
+current formulary, prior-authorization policy, and coverage criteria. Then use
+authoritative sources such as FDA labeling, DailyMed, CMS when relevant, and
+recognized professional guidance. Cite every web-derived criterion with a usable
+URL and identify when an official payer policy could not be confirmed.
+
+Coverage rules vary by payer, plan, diagnosis, formulation, dose, age, and date.
+Do not substitute common requirements for a confirmed payer rule. Clearly label
+confirmed payer criteria, general clinical or labeling context, and facts actually
+documented in the note. Do not recommend changing treatment and do not guarantee
+approval. This is preparation for staff review and entry into CoverMyMeds; it does
+not submit a prior authorization.
+""".strip()
+
+MEDICATION_OUTPUT_FORMAT = """
+Return a concise, detailed review using exactly these Markdown sections:
+
+# TRIMERA MEDICATION PRIOR AUTHORIZATION REVIEW
+
+## Request
+- **Medication:** [selected medication]
+- **Requested dose / formulation:** [entered value or Not provided]
+- **Payer / plan:** [entered value]
+- **Patient and provider identifiers found in note:** [values or Not documented]
+
+## Readiness Finding
+**READY | NEEDS INFORMATION | CRITERIA NOT CONFIRMED**
+
+[One short explanation. READY means the note appears to document the confirmed
+criteria; it is not a guarantee of approval.]
+
+## Patient-Specific Support Documented
+Use bullets for relevant diagnosis, symptoms/severity, prior medication trials,
+doses, durations, outcomes, adverse effects, contraindications, labs, and other
+support. Include only facts present in the note.
+
+## Confirmed Payer Requirements
+Use a table:
+
+| Requirement | Documented in note | Supporting note text | Authoritative source |
+|---|---|---|---|
+
+If an official current payer policy was not found, state that plainly here and do
+not present common requirements as confirmed payer requirements.
+
+## Missing or Unclear Documentation
+List only information genuinely missing or unclear relative to confirmed criteria
+or the requested drug's official labeling. Distinguish coverage documentation
+from clinical safety information.
+
+## Likely CoverMyMeds Preparation Items
+List the patient, prescriber, diagnosis, previous therapies, dose/formulation,
+quantity, days supply, supporting records, and plan-specific answers staff should
+have ready. Do not claim these are the exact electronic questions unless confirmed.
+
+## Recommended Administrative Next Steps
+Provide a short numbered list for staff. Include verification with the payer when
+current plan-specific criteria could not be located.
+
+## Sources
+List the authoritative source title, organization, date when available, and URL.
+""".strip()
+
+MEDICATION_FOLLOWUP_PROMPT = """
+You are Ask Trimera following a medication prior-authorization readiness review.
+Use the selected medication, payer, uploaded provider note, original review, and
+conversation. The note remains the only source of patient-specific facts.
+Automatically research current authoritative payer, FDA, DailyMed, CMS, or
+professional sources when needed and cite web-derived claims with usable URLs.
+Clearly distinguish confirmed payer rules from general information. You may draft
+provider clarification messages, staff checklists, and CoverMyMeds preparation
+notes, but do not submit anything, recommend treatment changes, invent facts, or
+guarantee authorization.
+""".strip()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def search_rxnorm_medications(query: str) -> List[str]:
+    """Return current RxNorm concept names that approximately match a drug search."""
+    params = urlencode({"term": query.strip(), "maxEntries": 12, "option": 1})
+    with urlopen(
+        f"https://rxnav.nlm.nih.gov/REST/approximateTerm.json?{params}",
+        timeout=8,
+    ) as response:
+        payload = json.load(response)
+
+    names: List[str] = []
+    seen = set()
+    candidates = payload.get("approximateGroup", {}).get("candidate", [])
+    for candidate in candidates:
+        rxcui = candidate.get("rxcui")
+        if not rxcui:
+            continue
+        with urlopen(
+            f"https://rxnav.nlm.nih.gov/REST/rxcui/{rxcui}/properties.json",
+            timeout=8,
+        ) as response:
+            properties = json.load(response).get("properties", {})
+        name = properties.get("name")
+        if name and name.casefold() not in seen:
+            seen.add(name.casefold())
+            names.append(name)
+    return names
+
 
 def extract_pdf(uploaded_file) -> str:
     reader = PdfReader(uploaded_file)
@@ -252,6 +367,9 @@ def reset_pa_session() -> None:
         "pa_report",
         "pa_followup_messages",
         "pa_filename",
+        "pa_medication",
+        "pa_payer",
+        "pa_dose_formulation",
     ]:
         st.session_state.pop(key, None)
 
@@ -276,17 +394,65 @@ with st.sidebar:
 page_header(
     "authorization",
     "Prior Authorization Assistant",
-    "Select TMS or Spravato, then upload the PA document for a detailed review.",
+    "Review TMS, Spravato, or medication authorization documentation and readiness.",
 )
 
 request_type = st.radio(
     "Select request type",
-    ["TMS", "Spravato / Esketamine"],
+    ["TMS", "Spravato / Esketamine", "Medication"],
     horizontal=True,
 )
 
+selected_medication = ""
+payer = ""
+dose_formulation = ""
+
+if request_type == "Medication":
+    medication_query = st.text_input(
+        "Search requested medication",
+        placeholder="Start typing a brand or generic medication name...",
+    )
+    medication_matches: List[str] = []
+    if len(medication_query.strip()) >= 2:
+        try:
+            medication_matches = search_rxnorm_medications(medication_query)
+        except Exception:
+            st.warning(
+                "Medication search is temporarily unavailable. You can still use "
+                "the medication name you entered."
+            )
+
+    if medication_matches:
+        selected_medication = st.selectbox(
+            "Select medication",
+            medication_matches,
+            help="Search results use the National Library of Medicine RxNorm vocabulary.",
+        )
+    elif medication_query.strip():
+        selected_medication = medication_query.strip()
+        st.caption("The entered medication name will be used for this review.")
+
+    payer = st.text_input(
+        "Insurance payer and plan",
+        placeholder="Example: BCBS Texas PPO, OptumRx, or Medicare Part D plan name",
+    )
+    dose_formulation = st.text_input(
+        "Requested dose and formulation (if known)",
+        placeholder="Example: 10 mg tablet, one daily",
+    )
+    st.caption(
+        "Medication names are matched using NLM RxNorm. This review prepares staff "
+        "for CoverMyMeds; it does not submit the authorization or guarantee coverage."
+    )
+    st.caption(
+        "RxNorm attribution: This product uses publicly available data from the U.S. "
+        "National Library of Medicine (NLM), National Institutes of Health, Department "
+        "of Health and Human Services; NLM is not responsible for the product and does "
+        "not endorse or recommend this or any other product."
+    )
+
 uploaded = st.file_uploader(
-    "Upload PA document",
+    "Upload provider assessment note" if request_type == "Medication" else "Upload PA document",
     type=["pdf"],
 )
 
@@ -313,15 +479,37 @@ if st.button(
     use_container_width=True,
 ):
     if not document_text.strip():
-        st.error("Upload a readable PA PDF first.")
+        st.error(
+            "Upload a readable provider-note PDF first."
+            if request_type == "Medication"
+            else "Upload a readable PA PDF first."
+        )
         st.stop()
 
     if not OPENAI_API_KEY:
         st.error("OPENAI_API_KEY is not configured.")
         st.stop()
 
-    request_prompt = TMS_PROMPT if request_type == "TMS" else SPRAVATO_PROMPT
-    instructions = f"{BASE_RULES}\n\n{request_prompt}\n\n{OUTPUT_FORMAT}"
+    if request_type == "Medication":
+        if not selected_medication:
+            st.error("Search for and select the requested medication first.")
+            st.stop()
+        if not payer.strip():
+            st.error("Enter the patient's insurance payer and plan first.")
+            st.stop()
+        instructions = f"{MEDICATION_RULES}\n\n{MEDICATION_OUTPUT_FORMAT}"
+        analysis_input = f"""
+REQUESTED MEDICATION: {selected_medication}
+REQUESTED DOSE / FORMULATION: {dose_formulation.strip() or "Not provided"}
+PAYER / PLAN: {payer.strip()}
+
+UPLOADED PROVIDER NOTE:
+{document_text}
+""".strip()
+    else:
+        request_prompt = TMS_PROMPT if request_type == "TMS" else SPRAVATO_PROMPT
+        instructions = f"{BASE_RULES}\n\n{request_prompt}\n\n{OUTPUT_FORMAT}"
+        analysis_input = document_text
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -330,7 +518,7 @@ if st.button(
             response = client.responses.create(
                 model=MODEL,
                 instructions=with_web_research(instructions),
-                input=document_text,
+                input=analysis_input,
                 tools=WEB_SEARCH_TOOLS,
             )
             report = response.output_text
@@ -342,6 +530,9 @@ if st.button(
     st.session_state["pa_document_text"] = document_text
     st.session_state["pa_report"] = report
     st.session_state["pa_filename"] = uploaded.name
+    st.session_state["pa_medication"] = selected_medication
+    st.session_state["pa_payer"] = payer.strip()
+    st.session_state["pa_dose_formulation"] = dose_formulation.strip()
     st.session_state["pa_followup_messages"] = []
 
 
@@ -356,7 +547,11 @@ if st.session_state.get("pa_report"):
     st.download_button(
         "Download PA review",
         data=report,
-        file_name="trimera_trd_pa_review.txt",
+        file_name=(
+            "trimera_medication_pa_review.txt"
+            if st.session_state.get("pa_request_type") == "Medication"
+            else "trimera_trd_pa_review.txt"
+        ),
         mime="text/plain",
         use_container_width=True,
     )
@@ -397,6 +592,15 @@ if st.session_state.get("pa_report"):
 REQUEST TYPE:
 {st.session_state["pa_request_type"]}
 
+REQUESTED MEDICATION:
+{st.session_state.get("pa_medication", "")}
+
+REQUESTED DOSE / FORMULATION:
+{st.session_state.get("pa_dose_formulation", "")}
+
+PAYER / PLAN:
+{st.session_state.get("pa_payer", "")}
+
 SOURCE FILE:
 {st.session_state.get("pa_filename", "Unknown")}
 
@@ -417,7 +621,11 @@ FOLLOW-UP CONVERSATION:
                 try:
                     response = client.responses.create(
                         model=MODEL,
-                        instructions=with_web_research(FOLLOWUP_PROMPT),
+                        instructions=with_web_research(
+                            MEDICATION_FOLLOWUP_PROMPT
+                            if st.session_state.get("pa_request_type") == "Medication"
+                            else FOLLOWUP_PROMPT
+                        ),
                         input=followup_context,
                         tools=WEB_SEARCH_TOOLS,
                     )
