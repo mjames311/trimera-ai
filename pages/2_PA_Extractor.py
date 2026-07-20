@@ -7,6 +7,7 @@ from urllib.request import urlopen
 import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
+from streamlit_searchbox import st_searchbox
 from auth import logout_user, require_auth
 from research import WEB_SEARCH_TOOLS, with_web_research
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
@@ -245,11 +246,18 @@ uploaded note is the only source of patient-specific facts. Never invent a
 diagnosis, medication trial, dose, date, duration, response, adverse effect,
 contraindication, lab result, insurance detail, or provider statement.
 
-Research current requirements automatically. Prioritize the named payer's own
-current formulary, prior-authorization policy, and coverage criteria. Then use
-authoritative sources such as FDA labeling, DailyMed, CMS when relevant, and
-recognized professional guidance. Cite every web-derived criterion with a usable
-URL and identify when an official payer policy could not be confirmed.
+Research current requirements automatically using authoritative sources such as
+FDA labeling, DailyMed, CMS when relevant, official drug-program criteria, and
+recognized professional guidance. If the user's optional context names a payer or
+plan, also look for that payer's official current formulary and authorization
+policy. Cite every web-derived criterion with a usable URL and identify when
+plan-specific criteria could not be confirmed.
+
+Interpret common medication directions naturally. Examples include AM, qAM,
+morning, in the morning, daily, QD, BID, twice daily, TID, three times daily, QID,
+qHS, bedtime, and PRN. Preserve the staff member's exact entry and provide a
+normalized plain-language interpretation. Never guess when a dose or frequency is
+ambiguous; flag it for clarification instead.
 
 Coverage rules vary by payer, plan, diagnosis, formulation, dose, age, and date.
 Do not substitute common requirements for a confirmed payer rule. Clearly label
@@ -266,8 +274,8 @@ Return a concise, detailed review using exactly these Markdown sections:
 
 ## Request
 - **Medication:** [selected medication]
-- **Requested dose / formulation:** [entered value or Not provided]
-- **Payer / plan:** [entered value]
+- **Entered dose and frequency:** [preserve the exact entered value or Not provided]
+- **Normalized dose and frequency:** [plain-language interpretation or Clarification needed]
 - **Patient and provider identifiers found in note:** [values or Not documented]
 
 ## Readiness Finding
@@ -281,14 +289,15 @@ Use bullets for relevant diagnosis, symptoms/severity, prior medication trials,
 doses, durations, outcomes, adverse effects, contraindications, labs, and other
 support. Include only facts present in the note.
 
-## Confirmed Payer Requirements
+## Authorization Documentation Review
 Use a table:
 
 | Requirement | Documented in note | Supporting note text | Authoritative source |
 |---|---|---|---|
 
-If an official current payer policy was not found, state that plainly here and do
-not present common requirements as confirmed payer requirements.
+Do not present general requirements as confirmed plan-specific requirements. If a
+specific payer is mentioned in the user's context, state whether its official
+current policy was located.
 
 ## Missing or Unclear Documentation
 List only information genuinely missing or unclear relative to confirmed criteria
@@ -310,8 +319,9 @@ List the authoritative source title, organization, date when available, and URL.
 
 MEDICATION_FOLLOWUP_PROMPT = """
 You are Ask Trimera following a medication prior-authorization readiness review.
-Use the selected medication, payer, uploaded provider note, original review, and
-conversation. The note remains the only source of patient-specific facts.
+Use the selected medication, entered dose and frequency, optional user context,
+uploaded provider note, original review, and conversation. The note remains the
+only source of patient-specific facts.
 Automatically research current authoritative payer, FDA, DailyMed, CMS, or
 professional sources when needed and cite web-derived claims with usable URLs.
 Clearly distinguish confirmed payer rules from general information. You may draft
@@ -350,6 +360,15 @@ def search_rxnorm_medications(query: str) -> List[str]:
     return names
 
 
+def medication_search_options(query: str) -> List[str]:
+    if len(query.strip()) < 2:
+        return []
+    try:
+        return search_rxnorm_medications(query)
+    except Exception:
+        return []
+
+
 def extract_pdf(uploaded_file) -> str:
     reader = PdfReader(uploaded_file)
     pages: List[str] = []
@@ -368,8 +387,7 @@ def reset_pa_session() -> None:
         "pa_followup_messages",
         "pa_filename",
         "pa_medication",
-        "pa_payer",
-        "pa_dose_formulation",
+        "pa_dose_frequency",
         "pa_initial_request",
     ]:
         st.session_state.pop(key, None)
@@ -405,41 +423,26 @@ request_type = st.radio(
 )
 
 selected_medication = ""
-payer = ""
-dose_formulation = ""
+dose_frequency = ""
 
 if request_type == "Other Medication":
-    medication_query = st.text_input(
-        "Search requested medication",
+    selected_medication = st_searchbox(
+        medication_search_options,
+        label="Search requested medication",
         placeholder="Start typing a brand or generic medication name...",
+        key="pa_medication_search",
+        default_use_searchterm=True,
+        edit_after_submit="option",
+        debounce=250,
     )
-    medication_matches: List[str] = []
-    if len(medication_query.strip()) >= 2:
-        try:
-            medication_matches = search_rxnorm_medications(medication_query)
-        except Exception:
-            st.warning(
-                "Medication search is temporarily unavailable. You can still use "
-                "the medication name you entered."
-            )
 
-    if medication_matches:
-        selected_medication = st.selectbox(
-            "Select medication",
-            medication_matches,
-            help="Search results use the National Library of Medicine RxNorm vocabulary.",
-        )
-    elif medication_query.strip():
-        selected_medication = medication_query.strip()
-        st.caption("The entered medication name will be used for this review.")
-
-    payer = st.text_input(
-        "Insurance payer and plan",
-        placeholder="Example: BCBS Texas PPO, OptumRx, or Medicare Part D plan name",
-    )
-    dose_formulation = st.text_input(
-        "Requested dose and formulation (if known)",
-        placeholder="Example: 10 mg tablet, one daily",
+    dose_frequency = st.text_input(
+        "Dose and frequency",
+        placeholder="Examples: 20mg in the morning, 10 mg BID, or 5mg at bedtime",
+        help=(
+            "Use ordinary wording or common abbreviations such as AM, qAM, daily, "
+            "BID, TID, qHS, or PRN. Trimera will preserve and interpret the entry."
+        ),
     )
     st.caption(
         "Medication names are matched using NLM RxNorm. This review prepares staff "
@@ -511,14 +514,10 @@ if st.button(
         if not selected_medication:
             st.error("Search for and select the requested medication first.")
             st.stop()
-        if not payer.strip():
-            st.error("Enter the patient's insurance payer and plan first.")
-            st.stop()
         instructions = f"{MEDICATION_RULES}\n\n{MEDICATION_OUTPUT_FORMAT}"
         analysis_input = f"""
 REQUESTED MEDICATION: {selected_medication}
-REQUESTED DOSE / FORMULATION: {dose_formulation.strip() or "Not provided"}
-PAYER / PLAN: {payer.strip()}
+ENTERED DOSE AND FREQUENCY: {dose_frequency.strip() or "Not provided"}
 
 USER'S QUESTIONS OR SPECIAL INSTRUCTIONS:
 {initial_request.strip() or "No additional instructions provided"}
@@ -557,8 +556,7 @@ UPLOADED PA DOCUMENT:
     st.session_state["pa_report"] = report
     st.session_state["pa_filename"] = uploaded.name
     st.session_state["pa_medication"] = selected_medication
-    st.session_state["pa_payer"] = payer.strip()
-    st.session_state["pa_dose_formulation"] = dose_formulation.strip()
+    st.session_state["pa_dose_frequency"] = dose_frequency.strip()
     st.session_state["pa_initial_request"] = initial_request.strip()
     st.session_state["pa_followup_messages"] = []
 
@@ -622,11 +620,8 @@ REQUEST TYPE:
 REQUESTED MEDICATION:
 {st.session_state.get("pa_medication", "")}
 
-REQUESTED DOSE / FORMULATION:
-{st.session_state.get("pa_dose_formulation", "")}
-
-PAYER / PLAN:
-{st.session_state.get("pa_payer", "")}
+ENTERED DOSE AND FREQUENCY:
+{st.session_state.get("pa_dose_frequency", "")}
 
 ORIGINAL QUESTIONS OR SPECIAL INSTRUCTIONS:
 {st.session_state.get("pa_initial_request", "") or "None"}
