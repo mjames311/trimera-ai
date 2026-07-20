@@ -452,19 +452,6 @@ if request_type == "Other Medication":
         "not endorse or recommend this or any other product."
     )
 
-initial_request = st.text_area(
-    "Questions or special instructions (optional)",
-    placeholder=(
-        "Tell Trimera what you want reviewed, ask a question, or identify anything "
-        "that deserves special attention in the uploaded note."
-    ),
-    help=(
-        "These instructions guide the review but do not replace the platform's "
-        "clinical, payer, documentation, or safety rules."
-    ),
-    height=100,
-)
-
 uploaded = st.file_uploader(
     "Upload provider assessment note"
     if request_type == "Other Medication"
@@ -487,6 +474,20 @@ if uploaded:
 
     except Exception as exc:
         st.error(f"Could not read PDF: {exc}")
+
+
+initial_request = st.text_area(
+    "Context, questions, or special instructions (optional)",
+    placeholder=(
+        "Add context, tell Trimera what you want reviewed, ask a question, or "
+        "identify anything that deserves special attention in the uploaded note."
+    ),
+    help=(
+        "This context stays with the current PA conversation and guides both the "
+        "initial review and follow-up chat."
+    ),
+    height=110,
+)
 
 
 if st.button(
