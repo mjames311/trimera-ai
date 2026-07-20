@@ -370,6 +370,7 @@ def reset_pa_session() -> None:
         "pa_medication",
         "pa_payer",
         "pa_dose_formulation",
+        "pa_initial_request",
     ]:
         st.session_state.pop(key, None)
 
@@ -399,7 +400,7 @@ page_header(
 
 request_type = st.radio(
     "Select request type",
-    ["TMS", "Spravato / Esketamine", "Medication"],
+    ["TMS", "Spravato / Esketamine", "Other Medication"],
     horizontal=True,
 )
 
@@ -407,7 +408,7 @@ selected_medication = ""
 payer = ""
 dose_formulation = ""
 
-if request_type == "Medication":
+if request_type == "Other Medication":
     medication_query = st.text_input(
         "Search requested medication",
         placeholder="Start typing a brand or generic medication name...",
@@ -451,8 +452,23 @@ if request_type == "Medication":
         "not endorse or recommend this or any other product."
     )
 
+initial_request = st.text_area(
+    "Questions or special instructions (optional)",
+    placeholder=(
+        "Tell Trimera what you want reviewed, ask a question, or identify anything "
+        "that deserves special attention in the uploaded note."
+    ),
+    help=(
+        "These instructions guide the review but do not replace the platform's "
+        "clinical, payer, documentation, or safety rules."
+    ),
+    height=100,
+)
+
 uploaded = st.file_uploader(
-    "Upload provider assessment note" if request_type == "Medication" else "Upload PA document",
+    "Upload provider assessment note"
+    if request_type == "Other Medication"
+    else "Upload PA document",
     type=["pdf"],
 )
 
@@ -481,7 +497,7 @@ if st.button(
     if not document_text.strip():
         st.error(
             "Upload a readable provider-note PDF first."
-            if request_type == "Medication"
+            if request_type == "Other Medication"
             else "Upload a readable PA PDF first."
         )
         st.stop()
@@ -490,7 +506,7 @@ if st.button(
         st.error("OPENAI_API_KEY is not configured.")
         st.stop()
 
-    if request_type == "Medication":
+    if request_type == "Other Medication":
         if not selected_medication:
             st.error("Search for and select the requested medication first.")
             st.stop()
@@ -503,13 +519,22 @@ REQUESTED MEDICATION: {selected_medication}
 REQUESTED DOSE / FORMULATION: {dose_formulation.strip() or "Not provided"}
 PAYER / PLAN: {payer.strip()}
 
+USER'S QUESTIONS OR SPECIAL INSTRUCTIONS:
+{initial_request.strip() or "No additional instructions provided"}
+
 UPLOADED PROVIDER NOTE:
 {document_text}
 """.strip()
     else:
         request_prompt = TMS_PROMPT if request_type == "TMS" else SPRAVATO_PROMPT
         instructions = f"{BASE_RULES}\n\n{request_prompt}\n\n{OUTPUT_FORMAT}"
-        analysis_input = document_text
+        analysis_input = f"""
+USER'S QUESTIONS OR SPECIAL INSTRUCTIONS:
+{initial_request.strip() or "No additional instructions provided"}
+
+UPLOADED PA DOCUMENT:
+{document_text}
+""".strip()
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -533,6 +558,7 @@ UPLOADED PROVIDER NOTE:
     st.session_state["pa_medication"] = selected_medication
     st.session_state["pa_payer"] = payer.strip()
     st.session_state["pa_dose_formulation"] = dose_formulation.strip()
+    st.session_state["pa_initial_request"] = initial_request.strip()
     st.session_state["pa_followup_messages"] = []
 
 
@@ -549,7 +575,7 @@ if st.session_state.get("pa_report"):
         data=report,
         file_name=(
             "trimera_medication_pa_review.txt"
-            if st.session_state.get("pa_request_type") == "Medication"
+            if st.session_state.get("pa_request_type") == "Other Medication"
             else "trimera_trd_pa_review.txt"
         ),
         mime="text/plain",
@@ -601,6 +627,9 @@ REQUESTED DOSE / FORMULATION:
 PAYER / PLAN:
 {st.session_state.get("pa_payer", "")}
 
+ORIGINAL QUESTIONS OR SPECIAL INSTRUCTIONS:
+{st.session_state.get("pa_initial_request", "") or "None"}
+
 SOURCE FILE:
 {st.session_state.get("pa_filename", "Unknown")}
 
@@ -623,7 +652,7 @@ FOLLOW-UP CONVERSATION:
                         model=MODEL,
                         instructions=with_web_research(
                             MEDICATION_FOLLOWUP_PROMPT
-                            if st.session_state.get("pa_request_type") == "Medication"
+                            if st.session_state.get("pa_request_type") == "Other Medication"
                             else FOLLOWUP_PROMPT
                         ),
                         input=followup_context,
