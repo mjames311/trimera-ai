@@ -1,12 +1,12 @@
 import json
 import os
 from typing import List
-from urllib.parse import urlencode
 from urllib.request import urlopen
 
 import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
+from rapidfuzz import fuzz, process
 from streamlit_searchbox import st_searchbox
 from auth import logout_user, require_auth
 from research import WEB_SEARCH_TOOLS, with_web_research
@@ -331,42 +331,67 @@ guarantee authorization.
 """.strip()
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def search_rxnorm_medications(query: str) -> List[str]:
-    """Return current RxNorm concept names that approximately match a drug search."""
-    params = urlencode({"term": query.strip(), "maxEntries": 12, "option": 1})
-    with urlopen(
-        f"https://rxnav.nlm.nih.gov/REST/approximateTerm.json?{params}",
-        timeout=8,
-    ) as response:
-        payload = json.load(response)
+COMMON_MEDICATION_FALLBACK = (
+    "Adderall", "Adderall XR", "Abilify", "Auvelity", "Buspar", "Celexa",
+    "Cymbalta", "Effexor XR", "Focalin", "Focalin XR", "Intuniv", "Lamictal",
+    "Lexapro", "Lithium", "Pristiq", "Prozac", "Qelbree", "Remeron",
+    "Risperdal", "Seroquel", "Strattera", "Trintellix", "Viibryd", "Vraylar",
+    "Vyvanse", "Wellbutrin", "Wellbutrin XL", "Zoloft",
+)
 
-    names: List[str] = []
-    seen = set()
-    candidates = payload.get("approximateGroup", {}).get("candidate", [])
-    for candidate in candidates:
-        rxcui = candidate.get("rxcui")
-        if not rxcui:
-            continue
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_rxnorm_medication_names() -> List[str]:
+    """Load brand and generic medication concepts once for instant local filtering."""
+    try:
         with urlopen(
-            f"https://rxnav.nlm.nih.gov/REST/rxcui/{rxcui}/properties.json",
-            timeout=8,
+            "https://rxnav.nlm.nih.gov/REST/allconcepts.json?tty=IN+BN",
+            timeout=10,
         ) as response:
-            properties = json.load(response).get("properties", {})
-        name = properties.get("name")
-        if name and name.casefold() not in seen:
-            seen.add(name.casefold())
-            names.append(name)
-    return names
+            payload = json.load(response)
+        concepts = payload.get("minConceptGroup", {}).get("minConcept", [])
+        names = {concept.get("name", "").strip() for concept in concepts}
+        names.discard("")
+        if names:
+            return sorted(names, key=str.casefold)
+    except Exception:
+        pass
+    return list(COMMON_MEDICATION_FALLBACK)
 
 
 def medication_search_options(query: str) -> List[str]:
-    if len(query.strip()) < 2:
+    clean_query = query.strip()
+    if not clean_query:
         return []
-    try:
-        return search_rxnorm_medications(query)
-    except Exception:
-        return []
+
+    names = load_rxnorm_medication_names()
+    folded_query = clean_query.casefold()
+    results: List[str] = []
+    seen = set()
+
+    for name in names:
+        folded_name = name.casefold()
+        if folded_name.startswith(folded_query):
+            results.append(name)
+            seen.add(folded_name)
+            if len(results) >= 12:
+                return results
+
+    if len(clean_query) >= 2:
+        for name, score, _ in process.extract(
+            clean_query,
+            names,
+            scorer=fuzz.WRatio,
+            limit=24,
+            score_cutoff=60,
+        ):
+            if name.casefold() not in seen:
+                results.append(name)
+                seen.add(name.casefold())
+            if len(results) >= 12:
+                break
+
+    return results
 
 
 def extract_pdf(uploaded_file) -> str:
@@ -426,6 +451,9 @@ selected_medication = ""
 dose_frequency = ""
 
 if request_type == "Other Medication":
+    with st.spinner("Preparing medication search..."):
+        load_rxnorm_medication_names()
+
     selected_medication = st_searchbox(
         medication_search_options,
         label="Search requested medication",
@@ -433,7 +461,7 @@ if request_type == "Other Medication":
         key="pa_medication_search",
         default_use_searchterm=True,
         edit_after_submit="option",
-        debounce=250,
+        debounce=0,
     )
 
     dose_frequency = st.text_input(

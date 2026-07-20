@@ -552,6 +552,22 @@ def filename_safe(value: str) -> str:
     return re.sub(r"_+", "_", value).strip("_")
 
 
+def availity_appeal_filename(patient: Any, dos: Any, claim_number: Any) -> str:
+    """Build an Availity-safe PDF name with no spaces or unsupported punctuation."""
+    parsed_dos = pd.to_datetime(dos, errors="coerce")
+    date_token = (
+        parsed_dos.strftime("%Y%m%d")
+        if not pd.isna(parsed_dos)
+        else filename_safe(str(dos)) or "UNKNOWN_DATE"
+    )
+    patient_token = filename_safe(str(patient)) or "UNKNOWN_PATIENT"
+    claim_token = filename_safe(str(claim_number)) or "UNKNOWN_CLAIM"
+    stem = filename_safe(
+        f"BCBS_APPEAL_{patient_token}_{date_token}_{claim_token}"
+    )
+    return f"{stem}.pdf"
+
+
 def format_date(value: Any) -> str:
     parsed = pd.to_datetime(value, errors="coerce")
     if pd.isna(parsed):
@@ -1545,11 +1561,10 @@ if report_files and note_files:
                 note["bytes"],
             )
 
-            output_name = (
-                f"{filename_safe(claim['Patient'])}_"
-                f"{pd.to_datetime(claim['DOS']).strftime('%Y-%m-%d')}_"
-                f"{filename_safe(claim['Claim Number'])}_"
-                f"BCBS_APPEAL.pdf"
+            output_name = availity_appeal_filename(
+                claim["Patient"],
+                claim["DOS"],
+                claim["Claim Number"],
             )
 
             built.append((output_name, merged_pdf))
