@@ -181,7 +181,7 @@ st.markdown(
         <div class="trimera-tool-icon">{icon_svg("documentation")}</div><div class="trimera-tool-name">Documentation QA</div>
         <div class="trimera-tool-description">Checks whether a completed note supports the intended billing using extracted facts, fixed coding rules, and governing references.</div>
       </a>
-      <a class="trimera-tool-card" href="/PA_Extractor" target="_self">
+      <a class="trimera-tool-card" href="/Prior_Authorization_Assistant" target="_self">
         <div class="trimera-tool-icon">{icon_svg("authorization")}</div><div class="trimera-tool-name">Prior Authorization Assistant</div>
         <div class="trimera-tool-description">Reviews TMS, Spravato, and medication authorization documentation for payer requirements, missing information, and next steps.</div>
       </a>

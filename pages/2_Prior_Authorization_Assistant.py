@@ -4,6 +4,7 @@ from typing import List
 from urllib.request import urlopen
 
 import streamlit as st
+import streamlit.components.v1 as components
 from openai import OpenAI
 from pypdf import PdfReader
 from rapidfuzz import fuzz, process
@@ -92,6 +93,12 @@ Extract:
   and any payer-specific exclusions
 - REMS/site-of-care requirements
 - Prior ketamine/esketamine history
+- CoverMyMeds preparation details, with special attention to:
+  diagnosis and general psychiatric history; every prior medication trial;
+  medication name, dose, frequency, start/end dates or duration, response,
+  failure, intolerance, adverse effects, and reason discontinued; current oral
+  antidepressant; requested Spravato dose and frequency; quantity or treatment
+  schedule; prescriber/site information; and supporting chart evidence
 - Exact payer criteria
 - Missing information
 """.strip()
@@ -213,6 +220,19 @@ Do not create a separate Missing / Not Documented section.
 - [criterion]
 - [criterion]
 
+## CoverMyMeds Preparation
+- **Applicable:** YES for Spravato / Esketamine | NO for TMS
+- **Diagnosis and relevant history ready:** YES | NO | UNCLEAR
+- **Prior medication trials ready:** YES | NO | UNCLEAR
+- **Dose, duration, outcome, and reason stopped documented:** YES | NO | UNCLEAR
+- **Current treatment and requested regimen ready:** YES | NO | UNCLEAR
+- **Likely supporting records to attach:** [value]
+- **Items staff should clarify before entry:** [value]
+
+For Spravato / Esketamine, summarize the chart facts staff will likely need to
+enter into CoverMyMeds. Do not claim these are the exact electronic questions
+unless a current authoritative source confirms them. For TMS, write Not applicable.
+
 ## Recommended Next Actions
 1. [action]
 2. [action]
@@ -288,6 +308,18 @@ criteria; it is not a guarantee of approval.]
 Use bullets for relevant diagnosis, symptoms/severity, prior medication trials,
 doses, durations, outcomes, adverse effects, contraindications, labs, and other
 support. Include only facts present in the note.
+
+## Prior Medication Trials and Relevant History
+Use a table:
+
+| Medication | Dose / Frequency | Dates or Duration | Response / Outcome | Reason Stopped / Adverse Effects |
+|---|---|---|---|---|
+
+Include every relevant prior trial documented in the note. Preserve exact chart
+details. Write Not documented for missing elements and do not infer patient facts.
+
+Then summarize the diagnosis, symptom history, previous treatment approaches,
+current treatment, and other chart history relevant to the requested medication.
 
 ## Authorization Documentation Review
 Use a table:
@@ -394,6 +426,32 @@ def medication_search_options(query: str) -> List[str]:
     return results
 
 
+def disable_browser_autofill(field_label: str) -> None:
+    """Prevent browser form-history suggestions from covering clinical fields."""
+    label_json = json.dumps(field_label)
+    components.html(
+        f"""
+        <script>
+        const label = {label_json};
+        const apply = () => {{
+          const inputs = window.parent.document.querySelectorAll('input');
+          inputs.forEach((input) => {{
+            if (input.getAttribute('aria-label') === label) {{
+              input.setAttribute('autocomplete', 'off');
+              input.setAttribute('name', 'trimera-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+              input.setAttribute('data-lpignore', 'true');
+              input.setAttribute('data-1p-ignore', 'true');
+            }}
+          }});
+        }};
+        apply();
+        new MutationObserver(apply).observe(window.parent.document.body, {{childList:true, subtree:true}});
+        </script>
+        """,
+        height=0,
+    )
+
+
 def extract_pdf(uploaded_file) -> str:
     reader = PdfReader(uploaded_file)
     pages: List[str] = []
@@ -472,6 +530,7 @@ if request_type == "Other Medication":
             "BID, TID, qHS, or PRN. Trimera will preserve and interpret the entry."
         ),
     )
+    disable_browser_autofill("Dose and frequency")
     st.caption(
         "Medication names are matched using NLM RxNorm. This review prepares staff "
         "for CoverMyMeds; it does not submit the authorization or guarantee coverage."
