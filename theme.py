@@ -28,6 +28,7 @@ ICON_PATHS = {
     "ask": '<path d="M20 14a3 3 0 0 1-3 3H9l-5 4v-4a3 3 0 0 1-2-2.8V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v7Z"/><path d="M7 9h8M7 13h5"/>',
     "appeal": '<path d="M6 3h9l4 4v14H6V3Z"/><path d="M15 3v5h4M15.5 16H9m0 0 3-3m-3 3 3 3"/>',
     "medication": '<path d="m8.2 4.2 11.6 11.6a4.2 4.2 0 0 1-6 6L2.2 10.2a4.2 4.2 0 0 1 6-6Z"/><path d="m7 15 8-8M5.5 7.5l4 4M14.5 16.5l2 2"/>',
+    "medlog": '<path d="M9 4h6"/><path d="M9 2h6v4H9z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M8 10h8M8 14h5M8 18h8"/><path d="m15 14 1.5 1.5L19 13"/>',
     "clinical": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3.5V2h6v1.5M12 8v7M8.5 11.5h7"/>',
     "user": '<circle cx="12" cy="8" r="3.5"/><path d="M5 21c.5-4 3-6 7-6s6.5 2 7 6"/>',
     "security": '<path d="M12 3 20 6v5c0 5.2-3.3 8.3-8 10-4.7-1.7-8-4.8-8-10V6l8-3Z"/><rect x="9" y="10" width="6" height="5" rx="1"/><path d="M10.5 10V8.5a1.5 1.5 0 0 1 3 0V10"/>',

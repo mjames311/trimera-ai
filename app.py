@@ -204,6 +204,10 @@ st.markdown(
         <div class="trimera-tool-icon">{icon_svg("medication")}</div><div class="trimera-tool-name">Medication Interaction Review</div>
         <div class="trimera-tool-description">Extracts the current medication list and reviews interactions, safety concerns, monitoring needs, and follow-up questions.</div>
       </a>
+      <a class="trimera-tool-card" href="/Spravato_Medication_Log" target="_self">
+        <div class="trimera-tool-icon">{icon_svg("medlog")}</div><div class="trimera-tool-name">Spravato Medication Log</div>
+        <div class="trimera-tool-description">Turns natural dictation into a structured medication-log row for staff review, inventory verification, and approved submission.</div>
+      </a>
       <a class="trimera-tool-card" href="/Security_and_Privacy" target="_self">
         <div class="trimera-tool-icon">{icon_svg("security")}</div><div class="trimera-tool-name">Security &amp; Privacy</div>
         <div class="trimera-tool-description">Explains access controls, session safeguards, PHI-separated research, staff responsibilities, and compliance prerequisites.</div>

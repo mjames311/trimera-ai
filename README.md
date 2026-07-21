@@ -18,6 +18,10 @@ This is a local/internal prototype for fictional or fully de-identified notes.
 
 The Home page is public. Every clinical tool requires a verified Google Workspace account in the domain configured by `TRIMERA_ALLOWED_EMAIL_DOMAIN` (default: `trimerahealth.net`). Protected sessions expire after 30 minutes of inactivity, after eight hours total, or when the Google identity token expires.
 
+## Spravato medication-log practice mode
+
+The Spravato Medication Log page uses fictional patients until the Microsoft 365 connector is separately configured and tested. `OPENAI_TRANSCRIBE_MODEL` selects the speech-to-text model. Keep `TRIMERA_MED_LOG_TEAMS_WRITE_ENABLED=false`; changing this flag alone does not configure or authorize Microsoft access, and the application intentionally contains no live-write implementation yet.
+
 ## Before PHI
 
 Do not use PHI until the OpenAI BAA is executed and the API organization is correctly provisioned, the hosting environment is under an appropriate BAA, and production authentication/audit logging are configured.
