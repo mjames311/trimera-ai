@@ -1,9 +1,13 @@
 """Shared Trimera Health visual system for every Streamlit page."""
 
+import base64
+import json
 from html import escape
+from pathlib import Path
 from typing import Optional
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 TRIMERA_GREEN = "#78C94E"
@@ -296,6 +300,15 @@ div.stButton > button[kind="primary"], div.stDownloadButton > button[kind="prima
 [data-testid="stAlert"] {{ border-radius:10px; border:0; box-shadow:none; }}
 [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p {{ color:inherit; }}
 [data-testid="stExpander"], [data-testid="stMetric"], [data-testid="stDataFrame"], [data-testid="stTable"] {{ border-radius:12px; overflow:hidden; border-color:var(--trimera-border); }}
+[data-testid="stExpander"] {{ background:#fff !important; }}
+[data-testid="stExpander"] details,
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary:hover,
+[data-testid="stExpander"] summary:focus,
+[data-testid="stExpander"] details[open] summary {{ background:#fff !important; color:var(--trimera-text) !important; }}
+[data-testid="stExpander"] summary *,
+[data-testid="stExpander"] details[open] summary * {{ color:var(--trimera-text) !important; fill:var(--trimera-text) !important; }}
+[data-testid="stExpander"] summary:hover {{ background:#f3f8f5 !important; }}
 [data-testid="stMetric"] {{ background:white; padding:1rem; border:1px solid var(--trimera-border); }}
 [data-testid="stChatMessage"] {{ background:#fff; border:1px solid var(--trimera-border); border-radius:13px; margin:.55rem 0; padding:.55rem .75rem; }}
 [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{
@@ -326,6 +339,7 @@ thead tr {{ background:var(--trimera-navy) !important; color:white !important; }
 """,
         unsafe_allow_html=True,
     )
+    _install_page_transition_loader()
 
 
 def render_topbar() -> None:
@@ -368,6 +382,93 @@ def render_app_shell(icon: str, title: str, subtitle: str) -> None:
     apply_trimera_theme()
     render_topbar()
     page_header(icon, title, subtitle)
+
+
+def _available_puppies() -> list[tuple[str, Path]]:
+    assets_dir = Path(__file__).resolve().parent / "Assets"
+    ozzie_path = assets_dir / "ozzie_head.png"
+    return [("Ozzie", ozzie_path)] if ozzie_path.exists() else []
+
+
+def _install_page_transition_loader() -> None:
+    """Display a puppy immediately after an internal page link is selected."""
+    puppies = _available_puppies()
+    if not puppies:
+        return
+    puppy_data = [
+        {
+            "name": name,
+            "src": "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii"),
+        }
+        for name, path in puppies
+    ]
+    components.html(
+        f"""
+<script>
+(() => {{
+  const doc = window.parent.document;
+  const overlayId = "trimera-page-transition";
+  const puppies = {json.dumps(puppy_data)};
+  const prior = doc.getElementById(overlayId);
+  if (prior) {{
+    const shownAt = Number(prior.dataset.shownAt || Date.now());
+    const remaining = Math.max(0, 700 - (Date.now() - shownAt));
+    window.setTimeout(() => prior.remove(), remaining);
+  }}
+
+  if (!doc.getElementById("trimera-page-transition-style")) {{
+    const style = doc.createElement("style");
+    style.id = "trimera-page-transition-style";
+    style.textContent = `
+      @keyframes trimeraPuppySpin {{ to {{ transform:rotate(360deg); }} }}
+      #trimera-page-transition {{
+        position:fixed; inset:0; z-index:2147483647; display:flex;
+        align-items:center; justify-content:center; background:#081322;
+        color:#fff; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      }}
+      #trimera-page-transition div {{ text-align:center; padding:24px; }}
+      #trimera-page-transition img {{
+        display:block; width:108px; height:108px; margin:auto; border-radius:50%;
+        object-fit:cover; border:5px solid #78c94e;
+        box-shadow:0 0 0 5px rgba(7,137,219,.28);
+        animation:trimeraPuppySpin 2.2s linear infinite;
+      }}
+      #trimera-page-transition strong {{ display:block; margin-top:18px; font-size:1.08rem; }}
+      #trimera-page-transition span {{ display:block; margin-top:5px; color:#bdcad8; font-size:.85rem; }}
+    `;
+    doc.head.appendChild(style);
+  }}
+
+  const show = () => {{
+    if (doc.getElementById(overlayId)) return;
+    const puppy = puppies[Math.floor(Math.random() * puppies.length)];
+    const overlay = doc.createElement("div");
+    overlay.id = overlayId;
+    overlay.dataset.shownAt = String(Date.now());
+    overlay.setAttribute("role", "status");
+    overlay.innerHTML = `<div><img src="${{puppy.src}}" alt="${{puppy.name}}"><strong>Loading Trimera AI…</strong><span>${{puppy.name}} is getting the next tool ready.</span></div>`;
+    doc.body.appendChild(overlay);
+  }};
+
+  if (!doc.documentElement.dataset.trimeraTransitionBound) {{
+    doc.documentElement.dataset.trimeraTransitionBound = "true";
+    doc.addEventListener("click", (event) => {{
+      const anchor = event.target.closest("a[href]");
+      if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("javascript:")) return;
+      let destination;
+      try {{ destination = new URL(anchor.href, window.parent.location.href); }} catch (_) {{ return; }}
+      if (destination.origin !== window.parent.location.origin || destination.href === window.parent.location.href) return;
+      show();
+    }}, true);
+  }}
+}})();
+</script>
+""",
+        height=0,
+        width=0,
+    )
 
 
 def sidebar_label(label: str) -> None:

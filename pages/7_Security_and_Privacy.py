@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from auth import logout_user, require_auth
+from auth import logout_user
 from theme import (
     apply_trimera_theme,
     page_header,
@@ -20,10 +20,6 @@ st.set_page_config(
 )
 
 apply_trimera_theme()
-require_auth(
-    "Trimera AI Security and Privacy",
-    "Security information for authorized Trimera Health staff.",
-)
 render_topbar()
 page_header(
     "security",
@@ -33,9 +29,12 @@ page_header(
 
 with st.sidebar:
     sidebar_label("Quick actions")
-    st.caption(str(st.user.get("email", "")))
-    if st.button("Sign out", use_container_width=True):
-        logout_user()
+    if getattr(st.user, "is_logged_in", False):
+        st.caption(str(st.user.get("email", "")))
+        if st.button("Sign out", use_container_width=True):
+            logout_user()
+    else:
+        st.caption("This information is available without signing in.")
     sidebar_reminder(
         "Use the minimum necessary",
         "Only submit information needed for the authorized work task and always review AI output before acting on it.",
@@ -48,10 +47,9 @@ Trimera Health’s privacy program, professional judgment, or legal responsibili
 safeguards combine restricted workforce access, session limits, server-side credentials,
 grounding rules, and separation between patient records and external web research.
 
-**Important:** No application can make an organization compliant by itself. Before live
-PHI use, Trimera administrators must confirm that applicable BAAs, eligible services,
-retention settings, risk analysis, workforce policies, and incident procedures are active
-and documented.
+Trimera Health maintains Business Associate Agreements with Google Workspace, Google Cloud,
+and OpenAI for the applicable services used by this platform. These agreements establish
+vendor responsibilities for handling protected health information within covered services.
 """
 )
 
@@ -62,6 +60,7 @@ st.markdown(
   <div class="trimera-source-card"><strong>Verified work-account access</strong><span>Protected tools require a Google identity with a verified <code>@trimerahealth.net</code> email and matching Google Workspace domain claim. A personal Google account is not accepted.</span></div>
   <div class="trimera-source-card"><strong>Automatic session limits</strong><span>Protected sessions expire after 30 minutes of inactivity, after eight total hours, or when the identity token expires—whichever occurs first.</span></div>
   <div class="trimera-source-card"><strong>Server-side credentials</strong><span>OpenAI and authentication secrets are configured on the server and are not displayed in the browser or entered by staff.</span></div>
+  <div class="trimera-source-card"><strong>Business Associate Agreements</strong><span>Trimera Health maintains BAAs with Google Workspace, Google Cloud, and OpenAI for the applicable services supporting this platform.</span></div>
   <div class="trimera-source-card"><strong>PHI-separated web research</strong><span>The original patient record is not supplied to the web-enabled research request. Trimera first creates a general topic brief, removes common identifiers, researches that brief, and then returns the research to the protected note-analysis step.</span></div>
   <div class="trimera-source-card"><strong>Grounded patient findings</strong><span>Patient-specific facts must come from the submitted record. Outside literature may add general clinical, payer, regulatory, or coding context but may not invent missing patient history.</span></div>
   <div class="trimera-source-card"><strong>Human review remains required</strong><span>Outputs assist staff and clinicians. They do not independently authorize treatment, submit claims, change billing rules, guarantee payment, or replace professional review.</span></div>
@@ -71,6 +70,14 @@ st.markdown(
 )
 
 st.markdown('<div class="trimera-section-title">Common questions</div>', unsafe_allow_html=True)
+
+with st.expander("What Business Associate Agreements support Trimera AI?"):
+    st.markdown(
+        "Trimera Health maintains BAAs with Google Workspace, Google Cloud, and OpenAI for "
+        "the applicable services used by Trimera AI. Google Workspace supports the organization’s "
+        "managed work identities and email environment; Google Cloud provides the covered Cloud Run "
+        "infrastructure; and OpenAI’s agreement covers the eligible API services configured for the platform."
+    )
 
 with st.expander("Can I use my personal Google account?"):
     st.markdown(
@@ -96,8 +103,7 @@ with st.expander("Can current medical literature and payer guidance still be use
 with st.expander("Is OpenAI API data used to train public models?"):
     st.markdown(
         "OpenAI states that API data is not used to train or improve its models unless the customer "
-        "affirmatively opts in. PHI use additionally requires an executed OpenAI BAA covering the API "
-        "and an eligible retention configuration for the organization. "
+        "affirmatively opts in. Trimera Health maintains an OpenAI BAA for the applicable eligible API services. "
         "[OpenAI data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint) · "
         "[OpenAI HIPAA-eligible products and functionality](https://help.openai.com/en/articles/20001069)"
     )
@@ -106,8 +112,8 @@ with st.expander("Does using Cloud Run automatically make the application HIPAA 
     st.markdown(
         "No. Google lists Cloud Run among services covered by its HIPAA program, but Google also "
         "states that the customer remains responsible for configuring the solution and implementing "
-        "the required controls. Trimera must maintain the applicable Google Cloud BAA and use only "
-        "covered, appropriately configured services. "
+        "the required controls. Trimera Health maintains a Google Cloud BAA and uses Cloud Run as the "
+        "application’s covered hosting service. "
         "[Google Cloud HIPAA information](https://cloud.google.com/security/compliance/hipaa)"
     )
 
