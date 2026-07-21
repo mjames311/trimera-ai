@@ -1,6 +1,7 @@
 """Plain-language security and privacy information for Trimera staff."""
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from auth import logout_user
 from theme import (
@@ -141,6 +142,37 @@ with st.expander("What must staff do to help protect PHI?"):
         "- Sign out or lock the workstation when stepping away.\n"
         "- Report unexpected access, disclosure, or behavior through Trimera’s privacy/security process."
     )
+
+# Streamlit expanders are independent by default. This page uses accordion behavior
+# so staff can focus on one security answer at a time.
+components.html(
+    """
+<script>
+(() => {
+  const doc = window.parent.document;
+  const bindAccordions = () => {
+    const expanders = Array.from(doc.querySelectorAll('[data-testid="stExpander"] details'));
+    expanders.forEach((details) => {
+      if (details.dataset.trimeraAccordionBound) return;
+      details.dataset.trimeraAccordionBound = 'true';
+      details.addEventListener('toggle', () => {
+        if (!details.open) return;
+        expanders.forEach((other) => {
+          if (other !== details && other.open) other.open = false;
+        });
+      });
+    });
+  };
+  bindAccordions();
+  const observer = new MutationObserver(bindAccordions);
+  observer.observe(doc.body, { childList: true, subtree: true });
+  window.setTimeout(() => observer.disconnect(), 10000);
+})();
+</script>
+""",
+    height=0,
+    width=0,
+)
 
 st.info(
     "This page describes the current application design in plain language. It is not a legal "
