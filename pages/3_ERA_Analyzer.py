@@ -5,7 +5,7 @@ import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
 from auth import logout_user, require_auth
-from research import WEB_SEARCH_TOOLS, with_web_research
+from research import create_researched_response
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
@@ -355,11 +355,11 @@ UPLOADED ERA OR CLAIM-DETAIL DOCUMENT PACKET:
         f"Analyzing {len(filenames)} document(s) and matching related claims..."
     ):
         try:
-            response = client.responses.create(
+            response = create_researched_response(
+                client=client,
                 model=MODEL,
-                instructions=with_web_research(ANALYSIS_PROMPT),
-                input=user_input,
-                tools=WEB_SEARCH_TOOLS,
+                instructions=ANALYSIS_PROMPT,
+                api_input=user_input,
             )
             result = response.output_text
         except Exception as exc:
@@ -441,11 +441,11 @@ FOLLOW-UP CONVERSATION:
         with st.chat_message("assistant"):
             with st.spinner("Reviewing the complete ERA packet..."):
                 try:
-                    response = client.responses.create(
+                    response = create_researched_response(
+                        client=client,
                         model=MODEL,
-                        instructions=with_web_research(FOLLOWUP_PROMPT),
-                        input=followup_context,
-                        tools=WEB_SEARCH_TOOLS,
+                        instructions=FOLLOWUP_PROMPT,
+                        api_input=followup_context,
                     )
                     answer = response.output_text
                     st.markdown(answer)

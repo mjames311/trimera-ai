@@ -4,7 +4,7 @@ from typing import Any
 import streamlit as st
 from openai import OpenAI
 from auth import logout_user, require_auth
-from research import WEB_SEARCH_TOOLS, with_web_research
+from research import create_researched_response
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 st.set_page_config(
@@ -151,7 +151,7 @@ def build_api_input() -> list[dict[str, Any]]:
 
 
 def run_response(client: OpenAI) -> str:
-    response = client.responses.create(model=MODEL, instructions=with_web_research(SYSTEM_INSTRUCTIONS), input=build_api_input(), tools=WEB_SEARCH_TOOLS)
+    response = create_researched_response(client=client, model=MODEL, instructions=SYSTEM_INSTRUCTIONS, api_input=build_api_input())
     return response.output_text or "No response was returned."
 
 

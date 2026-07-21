@@ -4,7 +4,7 @@ from typing import Any
 import streamlit as st
 from openai import OpenAI
 from auth import logout_user, require_auth
-from research import WEB_SEARCH_TOOLS, with_web_research
+from research import create_researched_response
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
@@ -296,17 +296,15 @@ if question:
     st.session_state["messages"].append(user_message)
     render_message(user_message)
 
-    request_kwargs: dict[str, Any] = {
-        "model": MODEL,
-        "input": build_responses_input(),
-        "instructions": with_web_research(SYSTEM_INSTRUCTIONS),
-        "tools": WEB_SEARCH_TOOLS,
-    }
-
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
-                response = client.responses.create(**request_kwargs)
+                response = create_researched_response(
+                    client=client,
+                    model=MODEL,
+                    instructions=SYSTEM_INSTRUCTIONS,
+                    api_input=build_responses_input(),
+                )
                 answer = response.output_text or "No response was returned."
             except Exception as exc:
                 answer = f"OpenAI error:\n\n{exc}"

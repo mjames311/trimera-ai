@@ -10,7 +10,7 @@ from pypdf import PdfReader
 from rapidfuzz import fuzz, process
 from streamlit_searchbox import st_searchbox
 from auth import logout_user, require_auth
-from research import WEB_SEARCH_TOOLS, with_web_research
+from research import create_researched_response
 from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
@@ -627,11 +627,11 @@ UPLOADED PA DOCUMENT:
 
     with st.spinner("Analyzing prior authorization..."):
         try:
-            response = client.responses.create(
+            response = create_researched_response(
+                client=client,
                 model=MODEL,
-                instructions=with_web_research(instructions),
-                input=analysis_input,
-                tools=WEB_SEARCH_TOOLS,
+                instructions=instructions,
+                api_input=analysis_input,
             )
             report = response.output_text
         except Exception as exc:
@@ -731,15 +731,15 @@ FOLLOW-UP CONVERSATION:
         with st.chat_message("assistant"):
             with st.spinner("Reviewing the PA context..."):
                 try:
-                    response = client.responses.create(
+                    response = create_researched_response(
+                        client=client,
                         model=MODEL,
-                        instructions=with_web_research(
+                        instructions=(
                             MEDICATION_FOLLOWUP_PROMPT
                             if st.session_state.get("pa_request_type") == "Other Medication"
                             else FOLLOWUP_PROMPT
                         ),
-                        input=followup_context,
-                        tools=WEB_SEARCH_TOOLS,
+                        api_input=followup_context,
                     )
                     answer = response.output_text
                     st.markdown(answer)

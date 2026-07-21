@@ -11,7 +11,7 @@ from openai import OpenAI
 from pypdf import PdfReader
 from rapidfuzz import fuzz
 from auth import logout_user, require_auth
-from research import WEB_SEARCH_TOOLS, with_web_research
+from research import create_researched_response
 from theme import (
     apply_trimera_theme as apply_shared_theme,
     page_header as shared_page_header,
@@ -1233,11 +1233,11 @@ if st.button("Run documentation QA", type="primary", use_container_width=True):
     explanation_input = f"PAYER:\n{payer}\n\nINTENDED BILLING:\n{json.dumps(codes, indent=2)}\n\nFIXED CODE FINDINGS:\n{json.dumps(findings, indent=2)}\n\nEXTRACTED FACTS:\n{json.dumps(facts, indent=2)}\n\nGOVERNING EXCERPTS:\n{excerpts}\n\nCOMPLETED NOTE:\n{note_text}"
     with st.spinner("Writing grounded feedback..."):
         try:
-            explanation_response = client.responses.create(
+            explanation_response = create_researched_response(
+                client=client,
                 model=MODEL,
-                instructions=with_web_research(EXPLANATION_PROMPT),
-                input=explanation_input,
-                tools=WEB_SEARCH_TOOLS,
+                instructions=EXPLANATION_PROMPT,
+                api_input=explanation_input,
             )
             explanations = clean_json(explanation_response.output_text)
         except Exception as exc:
@@ -1270,7 +1270,7 @@ if st.session_state.get("qa_result"):
         with st.chat_message("assistant"):
             with st.spinner("Reviewing the fixed QA result..."):
                 try:
-                    response = client.responses.create(model=MODEL, instructions=with_web_research(FOLLOWUP_PROMPT), input=followup_context, tools=WEB_SEARCH_TOOLS)
+                    response = create_researched_response(client=client, model=MODEL, instructions=FOLLOWUP_PROMPT, api_input=followup_context)
                     answer = response.output_text
                     st.markdown(answer)
                 except Exception as exc:

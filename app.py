@@ -173,7 +173,7 @@ with st.sidebar:
 st.markdown(
     f"""
     <p class="trimera-home-intro">
-      Trimera AI transforms complex clinical and administrative work into clear, actionable intelligence. Built around Trimera Health’s workflows, the platform combines practice-specific standards, authoritative healthcare guidance, current research, and structured safeguards to help our team work faster and make better-informed decisions. Security and the responsible protection of protected health information are fundamental to every tool, without compromising the accuracy, accountability, or professional judgment each patient and payer interaction demands.
+      Trimera AI analyzes uploaded clinical documentation alongside embedded practice standards, authoritative healthcare guidance, and current reputable literature. Patient-specific findings are grounded exclusively in the submitted record, while external research provides relevant clinical, regulatory, payer, and coding context. Sources are identified whenever outside information is used, and missing patient information is never inferred from general guidance.
     </p>
     <div class="trimera-section-title">Available tools</div>
     <div class="trimera-tool-grid">
@@ -207,9 +207,9 @@ st.markdown(
       <div class="trimera-source-card"><strong>Authoritative reference library</strong><span>Where applicable, tools use embedded CMS and Medicare guidance, AMA coding guidance, payer medical policies, TMS and Spravato criteria, and Trimera documentation standards.</span></div>
       <div class="trimera-source-card"><strong>Your uploaded records</strong><span>Clinical notes, authorization documents, ERA files, remittance reports, trackers, and other attachments provide the case-specific facts used in each review.</span></div>
       <div class="trimera-source-card"><strong>Fixed rules and safeguards</strong><span>Documentation QA uses deterministic code-level rules after fact extraction. The AI does not independently change billing outcomes or invent undocumented facts.</span></div>
-      <div class="trimera-source-card"><strong>Automatic current web research</strong><span>Analytical and conversational tools can automatically research current reputable sources when embedded or uploaded guidance does not fully resolve a question. Web-derived claims are identified and cited.</span></div>
+      <div class="trimera-source-card"><strong>PHI-separated current research</strong><span>When current literature or policy can improve an analysis, Trimera creates a non-identifying research brief before searching reputable outside sources. The web-search step does not receive the original patient record, and web-derived claims are identified and cited.</span></div>
     </div>
-    <div class="trimera-home-note"><strong>Access and safeguards:</strong> Home is available without a password. One sign-in unlocks all protected tools for the current app session and expires after 30 minutes of inactivity. Uploaded records remain the sole source of patient-specific facts; external research adds current context but does not invent missing documentation, override fixed QA findings, or replace professional review.</div>
+    <div class="trimera-home-note"><strong>Access and safeguards:</strong> Home is available without a password. One sign-in unlocks all protected tools for the current app session and expires after 30 minutes of inactivity. Uploaded records remain the sole source of patient-specific facts. External research is performed from a separate, de-identified topic brief and adds current context without inventing missing documentation, overriding fixed QA findings, or replacing professional review.</div>
     """,
     unsafe_allow_html=True,
 )
