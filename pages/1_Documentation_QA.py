@@ -15,7 +15,6 @@ from research import create_researched_response
 from theme import (
     apply_trimera_theme as apply_shared_theme,
     page_header as shared_page_header,
-    puppy_spinner,
     render_topbar,
     sidebar_label,
     sidebar_model,
@@ -1223,7 +1222,7 @@ if st.button("Run documentation QA", type="primary", use_container_width=True):
         st.stop()
     client = OpenAI(api_key=OPENAI_API_KEY)
     extraction_input = f"INTENDED BILLING:\n{chr(10).join(entry['raw'] for entry in codes)}\n\nPAYER:\n{payer}\n\nCOMPLETED CLINICAL NOTE:\n{note_text}"
-    with puppy_spinner("Extracting documented facts from the clinical note..."):
+    with st.spinner("Extracting documented facts..."):
         try:
             extraction_response = client.responses.create(model=MODEL, instructions=FACT_EXTRACTION_PROMPT, input=extraction_input)
             facts = clean_json(extraction_response.output_text)
@@ -1232,7 +1231,7 @@ if st.button("Run documentation QA", type="primary", use_container_width=True):
             st.stop()
     findings = evaluate_codes(codes, facts, payer)
     explanation_input = f"PAYER:\n{payer}\n\nINTENDED BILLING:\n{json.dumps(codes, indent=2)}\n\nFIXED CODE FINDINGS:\n{json.dumps(findings, indent=2)}\n\nEXTRACTED FACTS:\n{json.dumps(facts, indent=2)}\n\nGOVERNING EXCERPTS:\n{excerpts}\n\nCOMPLETED NOTE:\n{note_text}"
-    with puppy_spinner("Comparing the documented facts with current guidance..."):
+    with st.spinner("Writing grounded feedback..."):
         try:
             explanation_response = create_researched_response(
                 client=client,
@@ -1269,7 +1268,7 @@ if st.session_state.get("qa_result"):
         followup_context = f"PAYER:\n{st.session_state['qa_payer']}\n\nINTENDED BILLING:\n{json.dumps(st.session_state['qa_codes'], indent=2)}\n\nFIXED FINDINGS:\n{json.dumps(st.session_state['qa_findings'], indent=2)}\n\nEXTRACTED FACTS:\n{json.dumps(st.session_state['qa_facts'], indent=2)}\n\nORIGINAL REPORT:\n{st.session_state['qa_result']}\n\nGOVERNING EXCERPTS:\n{st.session_state['qa_excerpts']}\n\nCOMPLETED NOTE:\n{st.session_state['qa_note_text']}\n\nFOLLOW-UP CONVERSATION:\n{conversation}"
         client = OpenAI(api_key=OPENAI_API_KEY)
         with st.chat_message("assistant"):
-            with puppy_spinner("Reviewing the fixed QA result and supporting sources..."):
+            with st.spinner("Reviewing the fixed QA result..."):
                 try:
                     response = create_researched_response(client=client, model=MODEL, instructions=FOLLOWUP_PROMPT, api_input=followup_context)
                     answer = response.output_text

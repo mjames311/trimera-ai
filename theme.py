@@ -1,13 +1,13 @@
 """Shared Trimera Health visual system for every Streamlit page."""
 
 import base64
-import random
-from contextlib import contextmanager
+import json
 from html import escape
 from pathlib import Path
 from typing import Optional
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 TRIMERA_GREEN = "#78C94E"
@@ -19,20 +19,6 @@ TRIMERA_MUTED = "#687B91"
 TRIMERA_BORDER = "#DCE5EC"
 TRIMERA_BACKGROUND = "#F7F9FB"
 TRIMERA_SURFACE = "#FFFFFF"
-
-PUPPY_PROCESSING_LINES = {
-    "ozzie": (
-        "Ozzie is fetching the answer.",
-        "Ozzie is sniffing out the relevant guidance.",
-        "Ozzie is keeping an eye on the details.",
-    ),
-    "tucker": (
-        "Tucker is working on it.",
-        "Tucker is checking the facts.",
-        "Tucker has joined the review team.",
-    ),
-}
-
 
 ICON_PATHS = {
     "home": '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/>',
@@ -339,6 +325,7 @@ thead tr {{ background:var(--trimera-navy) !important; color:white !important; }
 """,
         unsafe_allow_html=True,
     )
+    _install_page_transition_loader()
 
 
 def render_topbar() -> None:
@@ -392,53 +379,82 @@ def _available_puppies() -> list[tuple[str, Path]]:
     return puppies
 
 
-@contextmanager
-def puppy_spinner(status: str):
-    """Show a useful processing status with a randomly selected Trimera puppy."""
-    placeholder = st.empty()
+def _install_page_transition_loader() -> None:
+    """Show puppies immediately after internal navigation is selected."""
     puppies = _available_puppies()
     if not puppies:
-        with st.spinner(status):
-            yield
         return
 
-    puppy_name, image_path = random.choice(puppies)
-    image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
-    personality_lines = PUPPY_PROCESSING_LINES.get(
-        puppy_name,
-        (f"{puppy_name.title()} is working on it.",),
-    )
-    personality = random.choice(personality_lines)
-    placeholder.markdown(
+    puppy_data = [
+        {
+            "name": name.title(),
+            "src": "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii"),
+        }
+        for name, path in puppies
+    ]
+    components.html(
         f"""
-<style>
-@keyframes trimera-puppy-spin {{
-  from {{ transform:rotate(0deg); }}
-  to {{ transform:rotate(360deg); }}
-}}
-.trimera-puppy-loader {{
-  display:flex; align-items:center; gap:14px; margin:.65rem 0 1rem;
-  padding:13px 16px; border:1px solid #dce5ec; border-radius:14px;
-  background:#fff; box-shadow:0 8px 22px rgba(13,27,46,.07);
-}}
-.trimera-puppy-loader img {{
-  width:54px; height:54px; border-radius:50%; object-fit:cover;
-  border:3px solid #78c94e; animation:trimera-puppy-spin 2.4s linear infinite;
-}}
-.trimera-puppy-status strong {{ display:block; color:#111d31; font-size:.96rem; }}
-.trimera-puppy-status span {{ display:block; color:#687b91; font-size:.82rem; margin-top:2px; }}
-</style>
-<div class="trimera-puppy-loader" role="status" aria-live="polite">
-  <img src="data:image/png;base64,{image_data}" alt="{escape(puppy_name.title())}" />
-  <div class="trimera-puppy-status"><strong>{escape(status)}</strong><span>{escape(personality)}</span></div>
-</div>
+<script>
+(() => {{
+  const parentDoc = window.parent.document;
+  const overlayId = "trimera-page-transition";
+  const puppies = {json.dumps(puppy_data)};
+  const oldOverlay = parentDoc.getElementById(overlayId);
+  if (oldOverlay) oldOverlay.remove();
+
+  if (!parentDoc.getElementById("trimera-page-transition-style")) {{
+    const style = parentDoc.createElement("style");
+    style.id = "trimera-page-transition-style";
+    style.textContent = `
+      @keyframes trimeraTransitionSpin {{ to {{ transform: rotate(360deg); }} }}
+      @keyframes trimeraTransitionFade {{ from {{ opacity:0; }} to {{ opacity:1; }} }}
+      #trimera-page-transition {{
+        position:fixed; inset:0; z-index:2147483647; display:flex;
+        align-items:center; justify-content:center; background:#081322;
+        animation:trimeraTransitionFade .12s ease-out; color:white;
+        font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      }}
+      #trimera-page-transition .trimera-transition-card {{ text-align:center; padding:28px; }}
+      #trimera-page-transition img {{
+        width:112px; height:112px; border-radius:50%; object-fit:cover;
+        border:5px solid #78c94e; box-shadow:0 0 0 5px rgba(7,137,219,.28);
+        animation:trimeraTransitionSpin 2.2s linear infinite;
+      }}
+      #trimera-page-transition strong {{ display:block; margin-top:20px; font-size:1.1rem; }}
+      #trimera-page-transition span {{ display:block; margin-top:6px; color:#b9c8d8; font-size:.86rem; }}
+    `;
+    parentDoc.head.appendChild(style);
+  }}
+
+  const showLoader = () => {{
+    if (parentDoc.getElementById(overlayId) || !puppies.length) return;
+    const puppy = puppies[Math.floor(Math.random() * puppies.length)];
+    const overlay = parentDoc.createElement("div");
+    overlay.id = overlayId;
+    overlay.setAttribute("role", "status");
+    overlay.innerHTML = `<div class="trimera-transition-card"><img src="${{puppy.src}}" alt="${{puppy.name}}"><strong>Loading Trimera AI…</strong><span>${{puppy.name}} is getting the next tool ready.</span></div>`;
+    parentDoc.body.appendChild(overlay);
+  }};
+
+  if (!parentDoc.documentElement.dataset.trimeraTransitionBound) {{
+    parentDoc.documentElement.dataset.trimeraTransitionBound = "true";
+    parentDoc.addEventListener("click", (event) => {{
+      const anchor = event.target.closest("a[href]");
+      if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("javascript:")) return;
+      let destination;
+      try {{ destination = new URL(anchor.href, window.parent.location.href); }} catch (_) {{ return; }}
+      if (destination.origin !== window.parent.location.origin || destination.href === window.parent.location.href) return;
+      showLoader();
+    }}, true);
+  }}
+}})();
+</script>
 """,
-        unsafe_allow_html=True,
+        height=0,
+        width=0,
     )
-    try:
-        yield
-    finally:
-        placeholder.empty()
 
 
 def sidebar_label(label: str) -> None:

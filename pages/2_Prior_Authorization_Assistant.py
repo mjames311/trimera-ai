@@ -11,7 +11,7 @@ from rapidfuzz import fuzz, process
 from streamlit_searchbox import st_searchbox
 from auth import logout_user, require_auth
 from research import create_researched_response
-from theme import apply_trimera_theme, page_header, puppy_spinner, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
+from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
 st.set_page_config(
@@ -625,7 +625,7 @@ UPLOADED PA DOCUMENT:
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    with puppy_spinner("Analyzing the note against authorization requirements..."):
+    with st.spinner("Analyzing prior authorization..."):
         try:
             response = create_researched_response(
                 client=client,
@@ -729,7 +729,7 @@ FOLLOW-UP CONVERSATION:
         client = OpenAI(api_key=OPENAI_API_KEY)
 
         with st.chat_message("assistant"):
-            with puppy_spinner("Reviewing the PA context and current authoritative sources..."):
+            with st.spinner("Reviewing the PA context..."):
                 try:
                     response = create_researched_response(
                         client=client,
