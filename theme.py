@@ -1,13 +1,9 @@
 """Shared Trimera Health visual system for every Streamlit page."""
 
-import base64
-import json
 from html import escape
-from pathlib import Path
 from typing import Optional
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 TRIMERA_GREEN = "#78C94E"
@@ -30,6 +26,7 @@ ICON_PATHS = {
     "medication": '<path d="m8.2 4.2 11.6 11.6a4.2 4.2 0 0 1-6 6L2.2 10.2a4.2 4.2 0 0 1 6-6Z"/><path d="m7 15 8-8M5.5 7.5l4 4M14.5 16.5l2 2"/>',
     "clinical": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3.5V2h6v1.5M12 8v7M8.5 11.5h7"/>',
     "user": '<circle cx="12" cy="8" r="3.5"/><path d="M5 21c.5-4 3-6 7-6s6.5 2 7 6"/>',
+    "security": '<path d="M12 3 20 6v5c0 5.2-3.3 8.3-8 10-4.7-1.7-8-4.8-8-10V6l8-3Z"/><rect x="9" y="10" width="6" height="5" rx="1"/><path d="M10.5 10V8.5a1.5 1.5 0 0 1 3 0V10"/>',
 }
 
 
@@ -114,8 +111,8 @@ html, body, [class*="css"] {{
 
 [data-testid="stMainBlockContainer"], .block-container {{
   max-width: 1320px;
-  padding-top: 6.7rem !important;
-  padding-bottom: 4rem;
+  padding-top: 5.65rem !important;
+  padding-bottom: 1.5rem;
   padding-left: 2rem;
   padding-right: 2rem;
 }}
@@ -190,7 +187,7 @@ button[aria-label="Expand sidebar"] {{ display:none !important; visibility:hidde
 .trimera-reminder strong {{ display:block; color:#087ca9; margin-bottom:.42rem; }}
 
 .trimera-home-intro {{ margin:.25rem auto 1.35rem; color:var(--trimera-muted); font-size:1.02rem; line-height:1.65; max-width:1080px; text-align:center; }}
-.trimera-section-title {{ margin:1.4rem 0 .75rem; color:var(--trimera-text); font-size:1.3rem; font-weight:800; letter-spacing:-.02em; }}
+.trimera-section-title {{ margin:1.05rem 0 .6rem; color:var(--trimera-text); font-size:1.22rem; font-weight:800; letter-spacing:-.02em; }}
 .trimera-tool-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.85rem; margin-bottom:1.35rem; }}
 .trimera-tool-card {{ display:block; min-height:156px; padding:1.05rem; color:var(--trimera-text) !important; text-decoration:none !important; background:#fff; border:1px solid var(--trimera-border); border-radius:13px; box-shadow:0 5px 16px rgba(13,27,46,.055); transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }}
 .trimera-tool-card:hover {{ transform:translateY(-2px); border-color:#80caa2; box-shadow:0 9px 22px rgba(13,27,46,.09); }}
@@ -207,9 +204,9 @@ button[aria-label="Expand sidebar"] {{ display:none !important; visibility:hidde
 .trimera-page-card {{
   position:relative;
   overflow:hidden;
-  margin:0 0 1.15rem;
-  padding:1.55rem 1.7rem 1.55rem 7.7rem;
-  min-height:132px;
+  margin:0 0 .85rem;
+  padding:1.25rem 1.5rem 1.25rem 6.7rem;
+  min-height:112px;
   display:flex;
   flex-direction:column;
   justify-content:center;
@@ -219,11 +216,11 @@ button[aria-label="Expand sidebar"] {{ display:none !important; visibility:hidde
   box-shadow:0 8px 24px rgba(13,27,46,.08);
 }}
 .trimera-page-card::before {{ content:""; position:absolute; inset:0 auto 0 0; width:8px; background:linear-gradient(180deg,var(--trimera-green),#38b66d 48%,var(--trimera-blue) 52%,var(--trimera-blue)); }}
-.trimera-page-icon {{ position:absolute; left:1.45rem; top:50%; transform:translateY(-50%); width:78px; height:78px; display:grid; place-items:center; border-radius:14px; background:linear-gradient(145deg,#f1f8ee,#edf7f3); color:#48ad4d; font-size:2.55rem; }}
-.trimera-page-icon .trimera-icon-svg {{ width:46px; height:46px; }}
+.trimera-page-icon {{ position:absolute; left:1.3rem; top:50%; transform:translateY(-50%); width:66px; height:66px; display:grid; place-items:center; border-radius:13px; background:linear-gradient(145deg,#f1f8ee,#edf7f3); color:#48ad4d; font-size:2.2rem; }}
+.trimera-page-icon .trimera-icon-svg {{ width:39px; height:39px; }}
 .trimera-kicker {{ color:#087d76; font-size:.72rem; font-weight:850; letter-spacing:.095em; text-transform:uppercase; margin-bottom:.25rem; }}
-.trimera-page-title {{ color:var(--trimera-text); font-size:2.35rem; line-height:1.08; font-weight:820; letter-spacing:-.035em; }}
-.trimera-page-subtitle {{ color:var(--trimera-muted); margin:.42rem 0 0; font-size:1rem; line-height:1.45; }}
+.trimera-page-title {{ color:var(--trimera-text); font-size:2.1rem; line-height:1.06; font-weight:820; letter-spacing:-.035em; }}
+.trimera-page-subtitle {{ color:var(--trimera-muted); margin:.3rem 0 0; font-size:.94rem; line-height:1.4; }}
 
 h1, h2, h3, h4 {{ color:var(--trimera-text); letter-spacing:-.022em; }}
 h1 {{ font-size:2.25rem; font-weight:800; }}
@@ -231,9 +228,9 @@ h2 {{ font-size:1.45rem; }}
 h1, h2, h3 {{ margin-top:.8rem !important; margin-bottom:.38rem !important; }}
 h4 {{ margin-top:.65rem !important; margin-bottom:.3rem !important; }}
 p, label, .stMarkdown {{ color:var(--trimera-text); }}
-[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] {{ gap:.72rem; }}
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] {{ gap:.52rem; }}
 [data-testid="stMainBlockContainer"] [data-testid="stMarkdownContainer"] p {{ margin-bottom:.45rem; line-height:1.48; }}
-hr {{ margin:1.5rem 0; border-color:var(--trimera-border); }}
+hr {{ margin:1.05rem 0; border-color:var(--trimera-border); }}
 
 [data-testid="stWidgetLabel"] p {{ font-weight:650; color:var(--trimera-text); }}
 [data-baseweb="input"] > div, [data-baseweb="textarea"] > div, [data-baseweb="select"] > div,
@@ -274,8 +271,8 @@ input[type="radio"] {{ accent-color:var(--trimera-green) !important; }}
 [data-testid="stRadioOption"][data-selected="true"] > div > div > div:first-child {{ border-color:var(--trimera-green) !important; background:var(--trimera-green) !important; }}
 [data-testid="stRadioOption"][data-selected="true"] > div > div > div:first-child > div {{ background:#fff !important; }}
 
-[data-testid="stFileUploader"] {{ padding:.7rem; border:1.5px dashed #75bfe8; border-radius:12px; background:#fbfdff; }}
-[data-testid="stFileUploaderDropzone"] {{ background:var(--trimera-navy); border:0; border-radius:9px; min-height:74px; }}
+[data-testid="stFileUploader"] {{ padding:.55rem; border:1.5px dashed #75bfe8; border-radius:12px; background:#fbfdff; }}
+[data-testid="stFileUploaderDropzone"] {{ background:var(--trimera-navy); border:0; border-radius:9px; min-height:62px; padding:.65rem .8rem !important; }}
 [data-testid="stFileUploaderDropzone"] *, [data-testid="stFileUploaderFile"] * {{ color:white !important; }}
 [data-testid="stFileUploaderDropzone"] button {{ background:#fff !important; color:var(--trimera-text) !important; border-radius:8px; }}
 [data-testid="stFileUploaderDropzone"] button *,
@@ -283,7 +280,7 @@ input[type="radio"] {{ accent-color:var(--trimera-green) !important; }}
 [data-testid="stFileUploaderDropzone"] button span {{ color:var(--trimera-navy) !important; -webkit-text-fill-color:var(--trimera-navy) !important; opacity:1 !important; }}
 
 div.stButton > button, div.stDownloadButton > button {{
-  min-height:48px;
+  min-height:42px;
   border-radius:10px;
   border:1px solid #d4e1e8;
   background:#fff;
@@ -301,8 +298,12 @@ div.stButton > button[kind="primary"], div.stDownloadButton > button[kind="prima
 [data-testid="stExpander"], [data-testid="stMetric"], [data-testid="stDataFrame"], [data-testid="stTable"] {{ border-radius:12px; overflow:hidden; border-color:var(--trimera-border); }}
 [data-testid="stMetric"] {{ background:white; padding:1rem; border:1px solid var(--trimera-border); }}
 [data-testid="stChatMessage"] {{ background:#fff; border:1px solid var(--trimera-border); border-radius:13px; margin:.55rem 0; padding:.55rem .75rem; }}
-[data-testid="stBottom"] {{ min-height:72px !important; padding:.5rem 1.25rem !important; background:#0b1019 !important; }}
-[data-testid="stBottom"] > div {{ min-height:0 !important; padding:.2rem 0 !important; }}
+[data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {{
+  position:static !important; inset:auto !important; min-height:0 !important;
+  max-width:1320px !important; margin:.75rem auto 1.25rem !important;
+  padding:.55rem 2rem !important; background:transparent !important;
+}}
+[data-testid="stBottom"] > div, [data-testid="stBottomBlockContainer"] > div {{ min-height:0 !important; padding:0 !important; }}
 [data-testid="stChatInput"] {{ min-height:48px !important; border-radius:12px; border:1px solid #8a98aa !important; background:#252834 !important; }}
 [data-testid="stChatInput"] textarea {{ min-height:46px !important; height:46px !important; color:white !important; -webkit-text-fill-color:white !important; caret-color:white !important; opacity:1 !important; }}
 [data-testid="stChatInput"] textarea::placeholder {{ color:#c5d1dc !important; -webkit-text-fill-color:#c5d1dc !important; opacity:1 !important; }}
@@ -325,7 +326,6 @@ thead tr {{ background:var(--trimera-navy) !important; color:white !important; }
 """,
         unsafe_allow_html=True,
     )
-    _install_page_transition_loader()
 
 
 def render_topbar() -> None:
@@ -368,93 +368,6 @@ def render_app_shell(icon: str, title: str, subtitle: str) -> None:
     apply_trimera_theme()
     render_topbar()
     page_header(icon, title, subtitle)
-
-
-def _available_puppies() -> list[tuple[str, Path]]:
-    assets_dir = Path(__file__).resolve().parent / "Assets"
-    puppies: list[tuple[str, Path]] = []
-    for image_path in sorted(assets_dir.glob("*_head.png")):
-        puppy_name = image_path.stem.removesuffix("_head").lower()
-        puppies.append((puppy_name, image_path))
-    return puppies
-
-
-def _install_page_transition_loader() -> None:
-    """Show puppies immediately after internal navigation is selected."""
-    puppies = _available_puppies()
-    if not puppies:
-        return
-
-    puppy_data = [
-        {
-            "name": name.title(),
-            "src": "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii"),
-        }
-        for name, path in puppies
-    ]
-    components.html(
-        f"""
-<script>
-(() => {{
-  const parentDoc = window.parent.document;
-  const overlayId = "trimera-page-transition";
-  const puppies = {json.dumps(puppy_data)};
-  const oldOverlay = parentDoc.getElementById(overlayId);
-  if (oldOverlay) oldOverlay.remove();
-
-  if (!parentDoc.getElementById("trimera-page-transition-style")) {{
-    const style = parentDoc.createElement("style");
-    style.id = "trimera-page-transition-style";
-    style.textContent = `
-      @keyframes trimeraTransitionSpin {{ to {{ transform: rotate(360deg); }} }}
-      @keyframes trimeraTransitionFade {{ from {{ opacity:0; }} to {{ opacity:1; }} }}
-      #trimera-page-transition {{
-        position:fixed; inset:0; z-index:2147483647; display:flex;
-        align-items:center; justify-content:center; background:#081322;
-        animation:trimeraTransitionFade .12s ease-out; color:white;
-        font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-      }}
-      #trimera-page-transition .trimera-transition-card {{ text-align:center; padding:28px; }}
-      #trimera-page-transition img {{
-        width:112px; height:112px; border-radius:50%; object-fit:cover;
-        border:5px solid #78c94e; box-shadow:0 0 0 5px rgba(7,137,219,.28);
-        animation:trimeraTransitionSpin 2.2s linear infinite;
-      }}
-      #trimera-page-transition strong {{ display:block; margin-top:20px; font-size:1.1rem; }}
-      #trimera-page-transition span {{ display:block; margin-top:6px; color:#b9c8d8; font-size:.86rem; }}
-    `;
-    parentDoc.head.appendChild(style);
-  }}
-
-  const showLoader = () => {{
-    if (parentDoc.getElementById(overlayId) || !puppies.length) return;
-    const puppy = puppies[Math.floor(Math.random() * puppies.length)];
-    const overlay = parentDoc.createElement("div");
-    overlay.id = overlayId;
-    overlay.setAttribute("role", "status");
-    overlay.innerHTML = `<div class="trimera-transition-card"><img src="${{puppy.src}}" alt="${{puppy.name}}"><strong>Loading Trimera AI…</strong><span>${{puppy.name}} is getting the next tool ready.</span></div>`;
-    parentDoc.body.appendChild(overlay);
-  }};
-
-  if (!parentDoc.documentElement.dataset.trimeraTransitionBound) {{
-    parentDoc.documentElement.dataset.trimeraTransitionBound = "true";
-    parentDoc.addEventListener("click", (event) => {{
-      const anchor = event.target.closest("a[href]");
-      if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const href = anchor.getAttribute("href");
-      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("javascript:")) return;
-      let destination;
-      try {{ destination = new URL(anchor.href, window.parent.location.href); }} catch (_) {{ return; }}
-      if (destination.origin !== window.parent.location.origin || destination.href === window.parent.location.href) return;
-      showLoader();
-    }}, true);
-  }}
-}})();
-</script>
-""",
-        height=0,
-        width=0,
-    )
 
 
 def sidebar_label(label: str) -> None:
