@@ -36,6 +36,7 @@ with st.sidebar:
             logout_user()
     else:
         st.caption("This information is available without signing in.")
+        st.button("Sign in with Google", type="primary", use_container_width=True, on_click=st.login)
     sidebar_reminder(
         "Use the minimum necessary",
         "Only submit information needed for the authorized work task and always review AI output before acting on it.",

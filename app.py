@@ -165,8 +165,11 @@ with st.sidebar:
     sidebar_label("Quick actions")
     if getattr(st.user, "is_logged_in", False):
         st.caption(str(st.user.get("email", "")))
-        if st.button("Sign out"):
+        if st.button("Sign out", use_container_width=True):
             logout_user()
+    else:
+        st.caption("You are not currently signed in.")
+        st.button("Sign in with Google", type="primary", use_container_width=True, on_click=st.login)
     sidebar_model(MODEL)
     sidebar_reminder("Secure environment", "The API key remains server-side.")
 
