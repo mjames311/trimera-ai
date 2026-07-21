@@ -5,7 +5,7 @@ import streamlit as st
 from openai import OpenAI
 from auth import logout_user, require_auth
 from research import create_researched_response
-from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
+from theme import apply_trimera_theme, page_header, puppy_spinner, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 st.set_page_config(
     page_title="Medication Interaction Review",
@@ -195,7 +195,7 @@ if not st.session_state["med_chat_messages"]:
             if additional_request.strip():
                 initial_request += "\n\nAdditional focus: " + additional_request.strip()
             st.session_state["med_chat_messages"].append({"role": "user", "content": initial_request, "display_content": "Run medication interaction review"})
-            with st.spinner("Extracting current medications and reviewing interactions..."):
+            with puppy_spinner("Extracting current medications and reviewing interactions..."):
                 answer = run_response(client)
             st.session_state["med_chat_messages"].append({"role": "assistant", "content": answer})
             st.rerun()
@@ -217,7 +217,7 @@ else:
         with st.chat_message("user"):
             st.markdown(follow_up)
         with st.chat_message("assistant"):
-            with st.spinner("Reviewing..."):
+            with puppy_spinner("Reviewing the note, conversation, and current evidence..."):
                 try:
                     answer = run_response(client)
                 except Exception as exc:

@@ -1,6 +1,10 @@
 """Shared Trimera Health visual system for every Streamlit page."""
 
+import base64
+import random
+from contextlib import contextmanager
 from html import escape
+from pathlib import Path
 from typing import Optional
 
 import streamlit as st
@@ -15,6 +19,19 @@ TRIMERA_MUTED = "#687B91"
 TRIMERA_BORDER = "#DCE5EC"
 TRIMERA_BACKGROUND = "#F7F9FB"
 TRIMERA_SURFACE = "#FFFFFF"
+
+PUPPY_PROCESSING_LINES = {
+    "ozzie": (
+        "Ozzie is fetching the answer.",
+        "Ozzie is sniffing out the relevant guidance.",
+        "Ozzie is keeping an eye on the details.",
+    ),
+    "tucker": (
+        "Tucker is working on it.",
+        "Tucker is checking the facts.",
+        "Tucker has joined the review team.",
+    ),
+}
 
 
 ICON_PATHS = {
@@ -364,6 +381,64 @@ def render_app_shell(icon: str, title: str, subtitle: str) -> None:
     apply_trimera_theme()
     render_topbar()
     page_header(icon, title, subtitle)
+
+
+def _available_puppies() -> list[tuple[str, Path]]:
+    assets_dir = Path(__file__).resolve().parent / "Assets"
+    puppies: list[tuple[str, Path]] = []
+    for image_path in sorted(assets_dir.glob("*_head.png")):
+        puppy_name = image_path.stem.removesuffix("_head").lower()
+        puppies.append((puppy_name, image_path))
+    return puppies
+
+
+@contextmanager
+def puppy_spinner(status: str):
+    """Show a useful processing status with a randomly selected Trimera puppy."""
+    placeholder = st.empty()
+    puppies = _available_puppies()
+    if not puppies:
+        with st.spinner(status):
+            yield
+        return
+
+    puppy_name, image_path = random.choice(puppies)
+    image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    personality_lines = PUPPY_PROCESSING_LINES.get(
+        puppy_name,
+        (f"{puppy_name.title()} is working on it.",),
+    )
+    personality = random.choice(personality_lines)
+    placeholder.markdown(
+        f"""
+<style>
+@keyframes trimera-puppy-spin {{
+  from {{ transform:rotate(0deg); }}
+  to {{ transform:rotate(360deg); }}
+}}
+.trimera-puppy-loader {{
+  display:flex; align-items:center; gap:14px; margin:.65rem 0 1rem;
+  padding:13px 16px; border:1px solid #dce5ec; border-radius:14px;
+  background:#fff; box-shadow:0 8px 22px rgba(13,27,46,.07);
+}}
+.trimera-puppy-loader img {{
+  width:54px; height:54px; border-radius:50%; object-fit:cover;
+  border:3px solid #78c94e; animation:trimera-puppy-spin 2.4s linear infinite;
+}}
+.trimera-puppy-status strong {{ display:block; color:#111d31; font-size:.96rem; }}
+.trimera-puppy-status span {{ display:block; color:#687b91; font-size:.82rem; margin-top:2px; }}
+</style>
+<div class="trimera-puppy-loader" role="status" aria-live="polite">
+  <img src="data:image/png;base64,{image_data}" alt="{escape(puppy_name.title())}" />
+  <div class="trimera-puppy-status"><strong>{escape(status)}</strong><span>{escape(personality)}</span></div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    try:
+        yield
+    finally:
+        placeholder.empty()
 
 
 def sidebar_label(label: str) -> None:

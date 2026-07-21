@@ -6,7 +6,7 @@ from openai import OpenAI
 from pypdf import PdfReader
 from auth import logout_user, require_auth
 from research import create_researched_response
-from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
+from theme import apply_trimera_theme, page_header, puppy_spinner, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
 st.set_page_config(
@@ -351,7 +351,7 @@ UPLOADED ERA OR CLAIM-DETAIL DOCUMENT PACKET:
 {packet_text}
 """.strip()
 
-    with st.spinner(
+    with puppy_spinner(
         f"Analyzing {len(filenames)} document(s) and matching related claims..."
     ):
         try:
@@ -439,7 +439,7 @@ FOLLOW-UP CONVERSATION:
         client = OpenAI(api_key=OPENAI_API_KEY)
 
         with st.chat_message("assistant"):
-            with st.spinner("Reviewing the complete ERA packet..."):
+            with puppy_spinner("Reviewing the complete ERA packet and claim context..."):
                 try:
                     response = create_researched_response(
                         client=client,

@@ -5,7 +5,7 @@ import streamlit as st
 from openai import OpenAI
 from auth import logout_user, require_auth
 from research import create_researched_response
-from theme import apply_trimera_theme, page_header, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
+from theme import apply_trimera_theme, page_header, puppy_spinner, render_topbar, sidebar_label, sidebar_model, sidebar_reminder
 
 
 st.set_page_config(
@@ -297,7 +297,7 @@ if question:
     render_message(user_message)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
+        with puppy_spinner("Finding relevant facts and preparing a grounded answer..."):
             try:
                 response = create_researched_response(
                     client=client,
