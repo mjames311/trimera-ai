@@ -1,8 +1,4 @@
-"""Voice-assisted Spravato medication log with a safe practice mode.
-
-The page intentionally does not write to Microsoft 365 until a separately
-configured Teams/SharePoint connector is enabled and tested.
-"""
+"""Voice-assisted Spravato medication log with a controlled Google Sheets push."""
 
 from __future__ import annotations
 
@@ -11,7 +7,10 @@ import os
 import re
 from datetime import date
 from typing import Any
+from urllib.parse import quote
 
+import google.auth
+from google.auth.transport.requests import AuthorizedSession
 import pandas as pd
 import streamlit as st
 from openai import OpenAI
@@ -38,7 +37,11 @@ APP_TITLE = "Spravato Medication Log"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 TRANSCRIBE_MODEL = os.getenv("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe")
 API_KEY = os.getenv("OPENAI_API_KEY", "")
-TEAMS_WRITE_ENABLED = os.getenv("TRIMERA_MED_LOG_TEAMS_WRITE_ENABLED", "").lower() == "true"
+GOOGLE_SHEETS_WRITE_ENABLED = (
+    os.getenv("TRIMERA_MED_LOG_GOOGLE_WRITE_ENABLED", "").lower() == "true"
+)
+GOOGLE_SHEETS_SPREADSHEET_ID = os.getenv("TRIMERA_MED_LOG_GOOGLE_SHEET_ID", "").strip()
+GOOGLE_SHEETS_TAB = "Staff Medication Log"
 
 PATIENTS = {
     "Alba": {"opening_balance": 9},
@@ -223,6 +226,62 @@ def clear_pending() -> None:
     st.session_state["medlog_last_transcript"] = ""
 
 
+def google_sheet_push_configured() -> bool:
+    return GOOGLE_SHEETS_WRITE_ENABLED and bool(GOOGLE_SHEETS_SPREADSHEET_ID)
+
+
+def _google_sheet_values(batch_rows: list[dict[str, Any]]) -> list[list[Any]]:
+    """Map reviewed UI rows to the staff-facing medication log schema."""
+    values: list[list[Any]] = []
+    for row in batch_rows:
+        patient = str(row["Patient"])
+        values.append(
+            [
+                patient,
+                row["DATE"],
+                row["# OF KITS RECEIVED"],
+                row["# OF KITS RETURNED"],
+                row["# OF KITS USED"],
+                row["# OF KITS ON HAND"],
+                row["TRACKING OR LOT #"],
+                row["E-SIGNATURE"],
+                row["Notes"],
+            ]
+        )
+    return values
+
+
+def push_batch_to_google_sheet(batch_rows: list[dict[str, Any]]) -> int:
+    """Append one reviewed batch using the Cloud Run service identity."""
+    if not google_sheet_push_configured():
+        raise RuntimeError("The Google Sheets test-log connection is not enabled.")
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    session = AuthorizedSession(credentials)
+    target_range = quote(f"{GOOGLE_SHEETS_TAB}!A:I", safe="")
+    url = (
+        "https://sheets.googleapis.com/v4/spreadsheets/"
+        f"{GOOGLE_SHEETS_SPREADSHEET_ID}/values/{target_range}:append"
+    )
+    response = session.post(
+        url,
+        params={
+            "valueInputOption": "USER_ENTERED",
+            "insertDataOption": "INSERT_ROWS",
+        },
+        json={"majorDimension": "ROWS", "values": _google_sheet_values(batch_rows)},
+        timeout=30,
+    )
+    response.raise_for_status()
+    updated_rows = int(response.json().get("updates", {}).get("updatedRows", 0))
+    if updated_rows != len(batch_rows):
+        raise RuntimeError(
+            f"Google Sheets reported {updated_rows} written rows for a {len(batch_rows)}-row batch."
+        )
+    return updated_rows
+
+
 apply_trimera_theme()
 require_auth(APP_TITLE, "Internal Trimera Health medication-tracking tool")
 initialize_state()
@@ -248,7 +307,7 @@ page_header(
 )
 
 st.info(
-    "Practice mode is active with fictional patients. Nothing on this page currently writes to Teams or the live medication log."
+    "Practice mode uses fictional patients. Approved test batches can be written only to the configured restricted Google Sheet."
 )
 
 st.markdown("### Speak or type the entry")
@@ -305,7 +364,7 @@ if st.session_state["medlog_last_transcript"]:
     st.markdown("**Transcript**")
     st.write(st.session_state["medlog_last_transcript"])
 if queue:
-    st.markdown("**Batch detected from this recording**")
+    st.markdown("**Review proposed changes**")
     batch_rows = [
         {
             "Patient": entry["patient_name"],
@@ -349,24 +408,33 @@ if queue:
             disabled=not batch_ready,
         ):
             for entry, row in zip(queue, batch_rows):
-                patient_name = row.pop("Patient")
-                st.session_state["medlog_rows"][patient_name].append(row)
+                practice_row = row.copy()
+                patient_name = practice_row.pop("Patient")
+                st.session_state["medlog_rows"][patient_name].append(practice_row)
                 if entry["kits_used"] > 0 and entry.get("lot_number"):
                     st.session_state["medlog_on_hand_lot"][patient_name] = entry["lot_number"]
             clear_pending()
             st.success("The entire fictional batch was added. No live record was changed.")
             st.rerun()
     with push_col:
-        st.button(
-            "Push batch to Teams test log",
+        push_clicked = st.button(
+            "Push approved batch to Google test log",
             use_container_width=True,
-            disabled=not (TEAMS_WRITE_ENABLED and batch_ready),
-            help="This remains disabled until the Microsoft connector is configured and validated against a test workbook.",
+            disabled=not (google_sheet_push_configured() and batch_ready),
+            help="Appends the reviewed rows to the configured restricted Google Sheet.",
         )
+        if push_clicked:
+            try:
+                with st.spinner("Writing the approved batch to the Google test log..."):
+                    written = push_batch_to_google_sheet(batch_rows)
+                clear_pending()
+                st.success(f"Pushed {written} approved row(s) to the Google test log.")
+            except Exception as exc:
+                st.error(f"The batch was not written: {exc}")
 
-if not TEAMS_WRITE_ENABLED:
+if not google_sheet_push_configured():
     st.caption(
-        "Teams submission is intentionally locked. Microsoft application approval and a test-workbook connection are required before live writes can be enabled."
+        "Google submission is locked until the test spreadsheet ID and explicit write flag are configured in Cloud Run."
     )
 
 st.markdown("### Fictional practice log")
