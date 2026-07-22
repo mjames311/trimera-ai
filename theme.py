@@ -107,6 +107,19 @@ html, body, [class*="css"] {{
 .trimera-brand-copy {{ display:flex; flex-direction:column; justify-content:center; line-height:1; }}
 .trimera-brand-name {{ font-family:Georgia,serif; font-size:1.42rem; font-weight:700; letter-spacing:.005em; }}
 .trimera-brand-tagline {{ margin-top:5px; font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:.92rem; font-weight:750; letter-spacing:.035em; opacity:1; }}
+.trimera-quote-rotator {{ position:absolute; left:50%; top:50%; width:min(43vw,680px); height:48px; transform:translate(-50%,-50%); pointer-events:none; }}
+.trimera-quote {{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; opacity:0; animation:trimeraQuoteCycle 90s ease-in-out infinite;
+  text-shadow:0 1px 4px rgba(13,27,46,.18);
+}}
+.trimera-quote-text {{ font-family:Georgia,serif; font-size:.96rem; font-style:italic; font-weight:650; line-height:1.22; }}
+.trimera-quote-author {{ margin-top:3px; font-size:.66rem; font-weight:800; letter-spacing:.075em; text-transform:uppercase; opacity:.84; }}
+@keyframes trimeraQuoteCycle {{
+  0%, 1% {{ opacity:0; transform:translateY(3px); }}
+  4%, 7% {{ opacity:1; transform:translateY(0); }}
+  10%, 100% {{ opacity:0; transform:translateY(-3px); }}
+}}
 .trimera-suite {{ display:flex; align-items:center; gap:11px; font-size:.91rem; font-weight:800; letter-spacing:.025em; text-transform:uppercase; }}
 .trimera-icon-svg {{ width:1em; height:1em; display:block; }}
 .trimera-suite-icon {{ font-size:1.32rem; }}
@@ -352,6 +365,7 @@ thead tr {{ background:var(--trimera-navy) !important; color:white !important; }
   .trimera-page-title {{ font-size:1.75rem; }}
   .trimera-tool-grid, .trimera-source-grid {{ grid-template-columns:1fr; }}
 }}
+@media (max-width: 1180px) {{ .trimera-quote-rotator {{ display:none; }} }}
 </style>
 """,
         unsafe_allow_html=True,
@@ -359,7 +373,28 @@ thead tr {{ background:var(--trimera-navy) !important; color:white !important; }
     _install_page_transition_loader()
 
 
-def render_topbar() -> None:
+def render_topbar(home_quotes: bool = False) -> None:
+    quotes = [
+        ("Act as if what you do makes a difference. It does.", "William James"),
+        ("Nothing will work unless you do.", "Maya Angelou"),
+        ("Well done is better than well said.", "Benjamin Franklin"),
+        ("Alone we can do so little; together we can do so much.", "Helen Keller"),
+        ("Start where you are. Use what you have. Do what you can.", "Arthur Ashe"),
+        ("The future depends on what you do today.", "Mahatma Gandhi"),
+        ("No act of kindness, no matter how small, is ever wasted.", "Aesop"),
+        ("Happiness depends upon ourselves.", "Aristotle"),
+        ("Energy and persistence conquer all things.", "Benjamin Franklin"),
+        ("You must do the thing you think you cannot do.", "Eleanor Roosevelt"),
+    ]
+    quote_markup = ""
+    if home_quotes:
+        quote_items = "".join(
+            f'<div class="trimera-quote" style="animation-delay:{index * 9}s">'
+            f'<span class="trimera-quote-text">“{escape(quote)}”</span>'
+            f'<span class="trimera-quote-author">— {escape(author)}</span></div>'
+            for index, (quote, author) in enumerate(quotes)
+        )
+        quote_markup = f'<div class="trimera-quote-rotator" aria-live="polite">{quote_items}</div>'
     st.markdown(
         f"""
 <div class="trimera-topbar">
@@ -373,6 +408,7 @@ def render_topbar() -> None:
     </svg>
     <span class="trimera-brand-copy"><span class="trimera-brand-name">Trimera Health</span><span class="trimera-brand-tagline">Offering Hope for Healing</span></span>
   </a>
+  {quote_markup}
   <div class="trimera-suite"><span class="trimera-suite-icon">{icon_svg("clinical")}</span><span>Trimera AI&nbsp; · &nbsp;Clinical Intelligence</span><span class="trimera-user">{icon_svg("user")}</span></div>
 </div>
 """,

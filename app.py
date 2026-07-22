@@ -154,7 +154,7 @@ def parse_codes(raw):
     return [p.strip() for p in re.split(r"[\n,;]+", raw) if p.strip()]
 
 
-render_topbar()
+render_topbar(home_quotes=True)
 page_header(
     "home",
     "Home",
