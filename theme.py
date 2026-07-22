@@ -2,6 +2,7 @@
 
 import base64
 import json
+import random
 from html import escape
 from pathlib import Path
 from typing import Optional
@@ -110,15 +111,15 @@ html, body, [class*="css"] {{
 .trimera-quote-rotator {{ position:absolute; left:50%; top:50%; width:min(43vw,680px); height:48px; transform:translate(-50%,-50%); pointer-events:none; }}
 .trimera-quote {{
   position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-  text-align:center; opacity:0; animation:trimeraQuoteCycle 90s ease-in-out infinite;
+  text-align:center; opacity:0; animation:trimeraQuoteCycle 80s ease-in-out infinite;
   text-shadow:0 1px 4px rgba(13,27,46,.18);
 }}
 .trimera-quote-text {{ font-family:Georgia,serif; font-size:.96rem; font-style:italic; font-weight:650; line-height:1.22; }}
 .trimera-quote-author {{ margin-top:3px; font-size:.66rem; font-weight:800; letter-spacing:.075em; text-transform:uppercase; opacity:.84; }}
 @keyframes trimeraQuoteCycle {{
-  0%, 1% {{ opacity:0; transform:translateY(3px); }}
-  4%, 7% {{ opacity:1; transform:translateY(0); }}
-  10%, 100% {{ opacity:0; transform:translateY(-3px); }}
+  0% {{ opacity:0; transform:translateY(3px); }}
+  1%, 6% {{ opacity:1; transform:translateY(0); }}
+  9%, 100% {{ opacity:0; transform:translateY(-3px); }}
 }}
 .trimera-suite {{ display:flex; align-items:center; gap:11px; font-size:.91rem; font-weight:800; letter-spacing:.025em; text-transform:uppercase; }}
 .trimera-icon-svg {{ width:1em; height:1em; display:block; }}
@@ -373,7 +374,7 @@ thead tr {{ background:var(--trimera-navy) !important; color:white !important; }
     _install_page_transition_loader()
 
 
-def render_topbar(home_quotes: bool = False) -> None:
+def render_topbar(home_quotes: bool = True) -> None:
     quotes = [
         ("Act as if what you do makes a difference. It does.", "William James"),
         ("Nothing will work unless you do.", "Maya Angelou"),
@@ -386,10 +387,11 @@ def render_topbar(home_quotes: bool = False) -> None:
         ("Energy and persistence conquer all things.", "Benjamin Franklin"),
         ("You must do the thing you think you cannot do.", "Eleanor Roosevelt"),
     ]
+    random.SystemRandom().shuffle(quotes)
     quote_markup = ""
     if home_quotes:
         quote_items = "".join(
-            f'<div class="trimera-quote" style="animation-delay:{index * 9}s">'
+            f'<div class="trimera-quote" style="animation-delay:{index * 8}s">'
             f'<span class="trimera-quote-text">“{escape(quote)}”</span>'
             f'<span class="trimera-quote-author">— {escape(author)}</span></div>'
             for index, (quote, author) in enumerate(quotes)
