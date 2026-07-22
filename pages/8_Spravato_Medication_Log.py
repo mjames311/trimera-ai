@@ -55,15 +55,14 @@ LOG_COLUMNS = [
     "# OF KITS ON HAND",
     "TRACKING OR LOT #",
     "E-SIGNATURE",
-    "SIG 2",
     "Notes",
 ]
 
 EXTRACTION_INSTRUCTIONS = """
-You convert one staff dictation into a proposed Spravato medication-log entry.
-The speaker may use natural, incomplete language and may state fields in any
-order. Extract only what was actually said. Do not invent a patient, date, lot
-number, signature, quantity, or dose.
+You convert one continuous staff dictation into a BATCH of proposed Spravato
+medication-log entries. The recording may contain several patients. Start a new
+entry whenever the speaker names another patient or says "go to [patient]'s
+sheet/chart." Do not merge facts from different patients.
 
 Known fictional practice patients:
 - Bart Simpson
@@ -71,26 +70,36 @@ Known fictional practice patients:
 - Homer Simpson
 - Marge Simpson
 
-Interpret common equivalents such as "used/administered/gave," "received/a
-shipment arrived," "returned/sent back," and "on hand/remaining/current
-count." Preserve lot and tracking identifiers exactly as spoken except for
-removing spaces between individually dictated letters or digits. A phrase such
-as "go to Bart Simpson" selects that patient. "New line," "add row," or
-"submit row" means the speaker is ready for staff review; it never bypasses
-confirmation.
+Interpret ordinary English rather than requiring column names. "Used,"
+"administered," and "gave" are equivalent. "Received" and "a shipment
+arrived" are equivalent. "Returned" and "sent back" are equivalent. If the
+speaker does not mention kits received, returned, or used for an entry, use 0
+for that quantity. "Today" means the current date supplied below.
 
-Return only valid JSON with these keys:
+If the speaker says a kit was "on hand," "already on hand," or from existing
+stock, set use_existing_on_hand_lot=true. Do not invent the lot identifier; the
+application will obtain the patient's currently recorded on-hand lot. If the
+speaker says "same lot" or "same tracking number," set
+same_lot_as_previous=true so the application can reuse the prior resolved entry
+in this batch. Preserve explicitly spoken identifiers, removing spaces between
+individually dictated letters or digits.
+
+Return only valid JSON in this exact outer shape:
+{"entries": [ ... ]}
+
+Every entry must contain these keys:
 patient_name, date, kits_received, kits_returned, kits_used, kits_on_hand,
-lot_number, e_signature, second_signature, dose_mg, notes, ready_for_review.
-Use null for missing values. Use integers for kit counts. Format an unambiguous
-date as MM/DD/YYYY. ready_for_review is true only when the dictation includes a
-new-line/add-row/submit-row instruction.
+lot_number, use_existing_on_hand_lot, same_lot_as_previous, dose_mg, notes.
+Use null only for information that cannot be safely derived. Use integers for
+kit counts and format dates as MM/DD/YYYY. Do not include signatures; the
+application identifies the authenticated staff member. Do not turn an earlier
+patient's facts into a later patient's notes.
 """.strip()
 
 
 def initialize_state() -> None:
     st.session_state.setdefault("medlog_patient", "Bart Simpson")
-    st.session_state.setdefault("medlog_pending", {})
+    st.session_state.setdefault("medlog_queue", [])
     st.session_state.setdefault(
         "medlog_rows",
         {
@@ -101,14 +110,17 @@ def initialize_state() -> None:
                     "# OF KITS RETURNED": 0,
                     "# OF KITS USED": 0,
                     "# OF KITS ON HAND": details["opening_balance"],
-                    "TRACKING OR LOT #": "PRACTICE-START",
+                    "TRACKING OR LOT #": f"{name.split()[0].upper()}-ON-HAND-001",
                     "E-SIGNATURE": "DEMO",
-                    "SIG 2": "",
                     "Notes": "Fictional opening balance",
                 }
             ]
             for name, details in PATIENTS.items()
         },
+    )
+    st.session_state.setdefault(
+        "medlog_on_hand_lot",
+        {name: f"{name.split()[0].upper()}-ON-HAND-001" for name in PATIENTS},
     )
     st.session_state.setdefault("medlog_last_transcript", "")
 
@@ -144,16 +156,41 @@ def _json_object(text: str) -> dict[str, Any]:
     return json.loads(cleaned[start : end + 1])
 
 
-def interpret_transcript(client: OpenAI, transcript: str) -> dict[str, Any]:
+def interpret_transcript(client: OpenAI, transcript: str) -> list[dict[str, Any]]:
     response = client.responses.create(
         model=MODEL,
-        instructions=EXTRACTION_INSTRUCTIONS,
+        instructions=EXTRACTION_INSTRUCTIONS + f"\n\nCURRENT DATE: {date.today().strftime('%m/%d/%Y')}",
         input=transcript,
     )
     parsed = _json_object(response.output_text or "")
-    if parsed.get("patient_name") not in PATIENTS:
-        parsed["patient_name"] = None
-    return parsed
+    entries = parsed.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("No patient entries were identified in the recording.")
+    cleaned = []
+    previous_lot = ""
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("patient_name") not in PATIENTS:
+            continue
+        patient = entry["patient_name"]
+        entry["kits_received"] = int(entry.get("kits_received") or 0)
+        entry["kits_returned"] = int(entry.get("kits_returned") or 0)
+        entry["kits_used"] = int(entry.get("kits_used") or 0)
+        entry["date"] = entry.get("date") or date.today().strftime("%m/%d/%Y")
+        explicit_lot = str(entry.get("lot_number") or "").strip()
+        if entry.get("same_lot_as_previous") and previous_lot:
+            explicit_lot = previous_lot
+        elif not explicit_lot and (
+            entry.get("use_existing_on_hand_lot") or entry["kits_used"] > 0
+        ):
+            explicit_lot = st.session_state["medlog_on_hand_lot"].get(patient, "")
+        entry["lot_number"] = explicit_lot
+        entry["notes"] = str(entry.get("notes") or "No additional notes").strip()
+        if explicit_lot:
+            previous_lot = explicit_lot
+        cleaned.append(entry)
+    if not cleaned:
+        raise ValueError("No known fictional patients were identified in the recording.")
+    return cleaned
 
 
 def current_balance(patient: str) -> int:
@@ -179,7 +216,7 @@ def normalize_date(value: Any) -> date:
 
 
 def clear_pending() -> None:
-    st.session_state["medlog_pending"] = {}
+    st.session_state["medlog_queue"] = []
     st.session_state["medlog_last_transcript"] = ""
 
 
@@ -198,7 +235,7 @@ with st.sidebar:
     sidebar_model(MODEL)
     sidebar_reminder(
         "Review before writing",
-        "Confirm the patient, lot number, quantities, signatures, and physical count before submission.",
+        "Confirm the patient, lot number, quantities, signature, and physical count before submission.",
     )
 
 page_header(
@@ -221,7 +258,7 @@ st.session_state["medlog_patient"] = patient
 
 st.markdown("### Speak or type the entry")
 st.caption(
-    'Example: “Go to Lisa Simpson. July 21, 84 milligrams, one kit used, lot LS 900, four kits on hand, signature MJ, new line.”'
+    'One recording may contain several patients. Example: “Go to Bart Simpson. Today he received one kit and used one kit already on hand. Go to Lisa Simpson. Today she used two from that same lot.”'
 )
 audio = st.audio_input("Record medication-log entry")
 typed = st.text_area(
@@ -260,21 +297,43 @@ elif interpret_clicked:
 
 if transcript_to_interpret:
     try:
-        with st.spinner("Matching the patient and organizing the proposed row..."):
-            parsed = interpret_transcript(get_client(), transcript_to_interpret)
-        if parsed.get("patient_name"):
-            st.session_state["medlog_patient"] = parsed["patient_name"]
-        st.session_state["medlog_pending"] = parsed
+        with st.spinner("Separating patients and organizing the proposed rows..."):
+            entries = interpret_transcript(get_client(), transcript_to_interpret)
+        st.session_state["medlog_patient"] = entries[0]["patient_name"]
+        st.session_state["medlog_queue"] = entries
+        st.session_state.pop("medlog_review_patient", None)
         st.rerun()
     except Exception as exc:
         st.error(f"The entry could not be interpreted: {exc}")
 
-pending = st.session_state["medlog_pending"]
+queue = st.session_state["medlog_queue"]
+pending = queue[0] if queue else {}
 if st.session_state["medlog_last_transcript"]:
     st.markdown("**Transcript**")
     st.write(st.session_state["medlog_last_transcript"])
+if queue:
+    st.markdown("**Batch detected from this recording**")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Patient": entry["patient_name"],
+                    "Date": entry["date"],
+                    "Received": entry["kits_received"],
+                    "Returned": entry["kits_returned"],
+                    "Used": entry["kits_used"],
+                    "Resolved lot": entry.get("lot_number") or "Needs review",
+                }
+                for entry in queue
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 st.markdown("### Review proposed row")
+if queue:
+    st.caption(f"Proposed row 1 of {len(queue)} remaining in this recording.")
 review_patient = st.selectbox(
     "Patient",
     list(PATIENTS),
@@ -302,16 +361,18 @@ with onhand_col:
         value=int(spoken_on_hand if spoken_on_hand is not None else max(calculated_on_hand, 0)),
     )
 
-lot_col, sig_col, sig2_col = st.columns(3)
+lot_col, sig_col = st.columns(2)
 with lot_col:
     lot_number = st.text_input("Tracking or lot #", value=str(pending.get("lot_number") or ""))
 with sig_col:
-    e_signature = st.text_input("E-signature", value=str(pending.get("e_signature") or ""))
-with sig2_col:
-    second_signature = st.text_input("Signature 2", value=str(pending.get("second_signature") or ""))
+    e_signature = st.text_input(
+        "E-signature",
+        value=current_user_email(),
+        help="Automatically populated from the authenticated Trimera Health account.",
+    )
 
 dose = pending.get("dose_mg")
-notes_default = str(pending.get("notes") or "")
+notes_default = str(pending.get("notes") or "No additional notes")
 if dose and f"{dose} mg" not in notes_default.lower():
     notes_default = f"Dose: {dose} mg" + (f"; {notes_default}" if notes_default else "")
 notes = st.text_input(
@@ -330,7 +391,7 @@ elif kits_on_hand != calculated_on_hand:
 else:
     st.success(f"Inventory reconciles at {calculated_on_hand} kits on hand.")
 
-required_ready = bool(lot_number.strip() and e_signature.strip()) and calculated_on_hand >= 0
+required_ready = bool(queue and lot_number.strip() and e_signature.strip()) and calculated_on_hand >= 0
 approve_col, push_col = st.columns(2)
 with approve_col:
     if st.button(
@@ -347,13 +408,22 @@ with approve_col:
             "# OF KITS ON HAND": kits_on_hand,
             "TRACKING OR LOT #": lot_number.strip(),
             "E-SIGNATURE": e_signature.strip(),
-            "SIG 2": second_signature.strip(),
-            "Notes": notes.strip(),
+            "Notes": notes.strip() or "No additional notes",
         }
         st.session_state["medlog_rows"][review_patient].append(row)
+        if kits_used > 0 and lot_number.strip():
+            st.session_state["medlog_on_hand_lot"][review_patient] = lot_number.strip()
         st.session_state["medlog_patient"] = review_patient
-        clear_pending()
-        st.success(f"Practice row added to {review_patient}. No live record was changed.")
+        if queue:
+            st.session_state["medlog_queue"] = queue[1:]
+        st.session_state.pop("medlog_review_patient", None)
+        if st.session_state["medlog_queue"]:
+            st.success(
+                f"Practice row added to {review_patient}. Review the next patient from the same recording."
+            )
+        else:
+            st.session_state["medlog_last_transcript"] = ""
+            st.success(f"All proposed rows were reviewed. No live record was changed.")
         st.rerun()
 with push_col:
     st.button(
