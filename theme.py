@@ -297,6 +297,22 @@ div.stButton > button, div.stDownloadButton > button {{
 div.stButton > button:hover, div.stDownloadButton > button:hover {{ transform:translateY(-1px); border-color:#63bda8; color:#08746d; box-shadow:0 7px 16px rgba(13,27,46,.09); }}
 div.stButton > button[kind="primary"], div.stDownloadButton > button[kind="primary"] {{ color:#fff; border:0; background:var(--trimera-gradient); box-shadow:0 7px 16px rgba(7,137,219,.16); }}
 [data-testid="stBaseButton-primary"] {{ color:#fff !important; border:0 !important; background:var(--trimera-gradient) !important; box-shadow:0 7px 16px rgba(7,137,219,.16) !important; }}
+div.stButton > button:disabled,
+[data-testid="stBaseButton-primary"]:disabled {{
+  background:#eef2f5 !important;
+  color:#7a8794 !important;
+  -webkit-text-fill-color:#7a8794 !important;
+  border:1px solid #d4dee7 !important;
+  box-shadow:none !important;
+  opacity:1 !important;
+  cursor:not-allowed !important;
+}}
+div.stButton > button:disabled *,
+[data-testid="stBaseButton-primary"]:disabled * {{
+  color:#7a8794 !important;
+  -webkit-text-fill-color:#7a8794 !important;
+  opacity:1 !important;
+}}
 
 [data-testid="stAlert"] {{ border-radius:10px; border:0; box-shadow:none; }}
 [data-testid="stAlert"] [data-testid="stMarkdownContainer"] p {{ color:inherit; }}
@@ -385,10 +401,16 @@ def render_app_shell(icon: str, title: str, subtitle: str) -> None:
     page_header(icon, title, subtitle)
 
 
-def _available_puppies() -> list[tuple[str, Path]]:
+def _available_puppies() -> list[tuple[str, Path, str]]:
     assets_dir = Path(__file__).resolve().parent / "Assets"
     ozzie_path = assets_dir / "ozzie_head.png"
-    return [("Ozzie", ozzie_path)] if ozzie_path.exists() else []
+    tucker_path = assets_dir / "tucker_head.png"
+    puppies = []
+    if ozzie_path.exists():
+        puppies.append(("Ozzie", ozzie_path, "Ozzie is fetching the tool"))
+    if tucker_path.exists():
+        puppies.append(("Tucker", tucker_path, "Tucker is sniffing out a solution"))
+    return puppies
 
 
 def _install_page_transition_loader() -> None:
@@ -400,8 +422,9 @@ def _install_page_transition_loader() -> None:
         {
             "name": name,
             "src": "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii"),
+            "message": message,
         }
-        for name, path in puppies
+        for name, path, message in puppies
     ]
     components.html(
         f"""
@@ -442,12 +465,19 @@ def _install_page_transition_loader() -> None:
 
   const show = () => {{
     if (doc.getElementById(overlayId)) return;
-    const puppy = puppies[Math.floor(Math.random() * puppies.length)];
+    const priorIndex = Number(doc.documentElement.dataset.trimeraLastPuppyIndex);
+    const puppyIndex = puppies.length < 2
+      ? 0
+      : Number.isInteger(priorIndex)
+        ? (priorIndex + 1) % puppies.length
+        : Math.floor(Math.random() * puppies.length);
+    doc.documentElement.dataset.trimeraLastPuppyIndex = String(puppyIndex);
+    const puppy = puppies[puppyIndex];
     const overlay = doc.createElement("div");
     overlay.id = overlayId;
     overlay.dataset.shownAt = String(Date.now());
     overlay.setAttribute("role", "status");
-    overlay.innerHTML = `<div><img src="${{puppy.src}}" alt="${{puppy.name}}"><strong>Loading Trimera AI…</strong><span>${{puppy.name}} is getting the next tool ready.</span></div>`;
+    overlay.innerHTML = `<div><img src="${{puppy.src}}" alt="${{puppy.name}}"><strong>Loading Trimera AI…</strong><span>${{puppy.message}}</span></div>`;
     doc.body.appendChild(overlay);
   }};
 
