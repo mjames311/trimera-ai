@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -41,10 +41,9 @@ API_KEY = os.getenv("OPENAI_API_KEY", "")
 TEAMS_WRITE_ENABLED = os.getenv("TRIMERA_MED_LOG_TEAMS_WRITE_ENABLED", "").lower() == "true"
 
 PATIENTS = {
-    "Bart Simpson": {"dob": "04/01/1985", "opening_balance": 9},
-    "Lisa Simpson": {"dob": "05/09/1987", "opening_balance": 5},
-    "Homer Simpson": {"dob": "05/12/1956", "opening_balance": 7},
-    "Marge Simpson": {"dob": "10/01/1956", "opening_balance": 4},
+    "Alba": {"opening_balance": 9},
+    "Ayers": {"opening_balance": 5},
+    "Armstrong": {"opening_balance": 7},
 }
 
 LOG_COLUMNS = [
@@ -65,16 +64,18 @@ entry whenever the speaker names another patient or says "go to [patient]'s
 sheet/chart." Do not merge facts from different patients.
 
 Known fictional practice patients:
-- Bart Simpson
-- Lisa Simpson
-- Homer Simpson
-- Marge Simpson
+- Alba
+- Ayers
+- Armstrong
 
 Interpret ordinary English rather than requiring column names. "Used,"
 "administered," and "gave" are equivalent. "Received" and "a shipment
 arrived" are equivalent. "Returned" and "sent back" are equivalent. If the
 speaker does not mention kits received, returned, or used for an entry, use 0
-for that quantity. "Today" means the current date supplied below.
+for that quantity. "Today" means the current date supplied below. If the
+speaker corrects an earlier statement (for example, "one kit—no, make that two"),
+the latest explicit correction controls and the superseded value must not be
+retained.
 
 If the speaker says a kit was "on hand," "already on hand," or from existing
 stock, set use_existing_on_hand_lot=true. Do not invent the lot identifier; the
@@ -98,7 +99,7 @@ patient's facts into a later patient's notes.
 
 
 def initialize_state() -> None:
-    st.session_state.setdefault("medlog_patient", "Bart Simpson")
+    st.session_state.setdefault("medlog_patient", "Alba")
     st.session_state.setdefault("medlog_queue", [])
     st.session_state.setdefault(
         "medlog_rows",
@@ -190,6 +191,23 @@ def interpret_transcript(client: OpenAI, transcript: str) -> list[dict[str, Any]
         cleaned.append(entry)
     if not cleaned:
         raise ValueError("No known fictional patients were identified in the recording.")
+    balances = {patient: current_balance(patient) for patient in PATIENTS}
+    signature = current_user_email()
+    for entry in cleaned:
+        patient = entry["patient_name"]
+        calculated = (
+            balances[patient]
+            + entry["kits_received"]
+            - entry["kits_returned"]
+            - entry["kits_used"]
+        )
+        spoken_on_hand = entry.get("kits_on_hand")
+        entry["inventory_mismatch"] = (
+            spoken_on_hand is not None and int(spoken_on_hand) != calculated
+        )
+        entry["kits_on_hand"] = calculated
+        entry["e_signature"] = signature
+        balances[patient] = calculated
     return cleaned
 
 
@@ -198,21 +216,6 @@ def current_balance(patient: str) -> int:
     if not rows:
         return int(PATIENTS[patient]["opening_balance"])
     return int(rows[-1]["# OF KITS ON HAND"])
-
-
-def expected_balance(patient: str, received: int, returned: int, used: int) -> int:
-    return current_balance(patient) + received - returned - used
-
-
-def normalize_date(value: Any) -> date:
-    if isinstance(value, date):
-        return value
-    if value:
-        try:
-            return datetime.strptime(str(value), "%m/%d/%Y").date()
-        except ValueError:
-            pass
-    return date.today()
 
 
 def clear_pending() -> None:
@@ -248,17 +251,9 @@ st.info(
     "Practice mode is active with fictional patients. Nothing on this page currently writes to Teams or the live medication log."
 )
 
-patient = st.selectbox(
-    "Current fictional patient sheet",
-    list(PATIENTS),
-    index=list(PATIENTS).index(st.session_state["medlog_patient"]),
-    help='You can also say “go to Bart Simpson” in the recording.',
-)
-st.session_state["medlog_patient"] = patient
-
 st.markdown("### Speak or type the entry")
 st.caption(
-    'One recording may contain several patients. Example: “Go to Bart Simpson. Today he received one kit and used one kit already on hand. Go to Lisa Simpson. Today she used two from that same lot.”'
+    'One recording may contain several patients. Example: “Go to Alba. Today one kit was received and one kit already on hand was used. Go to Ayers. Today two kits were used from that same lot.”'
 )
 audio = st.audio_input("Record medication-log entry")
 typed = st.text_area(
@@ -301,152 +296,92 @@ if transcript_to_interpret:
             entries = interpret_transcript(get_client(), transcript_to_interpret)
         st.session_state["medlog_patient"] = entries[0]["patient_name"]
         st.session_state["medlog_queue"] = entries
-        st.session_state.pop("medlog_review_patient", None)
         st.rerun()
     except Exception as exc:
         st.error(f"The entry could not be interpreted: {exc}")
 
 queue = st.session_state["medlog_queue"]
-pending = queue[0] if queue else {}
 if st.session_state["medlog_last_transcript"]:
     st.markdown("**Transcript**")
     st.write(st.session_state["medlog_last_transcript"])
 if queue:
     st.markdown("**Batch detected from this recording**")
+    batch_rows = [
+        {
+            "Patient": entry["patient_name"],
+            "DATE": entry["date"],
+            "# OF KITS RECEIVED": entry["kits_received"],
+            "# OF KITS RETURNED": entry["kits_returned"],
+            "# OF KITS USED": entry["kits_used"],
+            "# OF KITS ON HAND": entry["kits_on_hand"],
+            "TRACKING OR LOT #": entry.get("lot_number") or "NEEDS LOT",
+            "E-SIGNATURE": entry["e_signature"],
+            "Notes": (
+                f"Dose: {entry['dose_mg']} mg; {entry['notes']}"
+                if entry.get("dose_mg")
+                else entry["notes"]
+            ),
+        }
+        for entry in queue
+    ]
     st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "Patient": entry["patient_name"],
-                    "Date": entry["date"],
-                    "Received": entry["kits_received"],
-                    "Returned": entry["kits_returned"],
-                    "Used": entry["kits_used"],
-                    "Resolved lot": entry.get("lot_number") or "Needs review",
-                }
-                for entry in queue
-            ]
-        ),
+        pd.DataFrame(batch_rows),
         use_container_width=True,
         hide_index=True,
     )
+    missing_lots = [entry["patient_name"] for entry in queue if not entry.get("lot_number")]
+    mismatches = [entry["patient_name"] for entry in queue if entry.get("inventory_mismatch")]
+    negative_balances = [entry["patient_name"] for entry in queue if entry["kits_on_hand"] < 0]
+    if missing_lots:
+        st.error("A lot number could not be resolved for: " + ", ".join(missing_lots) + ". Correct the dictation and interpret it again.")
+    if mismatches:
+        st.warning("The spoken physical count did not match calculated inventory for: " + ", ".join(mismatches) + ".")
+    if negative_balances:
+        st.error("The proposed transaction would create negative inventory for: " + ", ".join(negative_balances) + ".")
 
-st.markdown("### Review proposed row")
-if queue:
-    st.caption(f"Proposed row 1 of {len(queue)} remaining in this recording.")
-review_patient = st.selectbox(
-    "Patient",
-    list(PATIENTS),
-    index=list(PATIENTS).index(pending.get("patient_name") or st.session_state["medlog_patient"]),
-    key="medlog_review_patient",
-)
-
-date_col, received_col, returned_col, used_col, onhand_col = st.columns(5)
-with date_col:
-    entry_date = st.date_input("Date", value=normalize_date(pending.get("date")))
-with received_col:
-    kits_received = st.number_input("Kits received", min_value=0, step=1, value=int(pending.get("kits_received") or 0))
-with returned_col:
-    kits_returned = st.number_input("Kits returned", min_value=0, step=1, value=int(pending.get("kits_returned") or 0))
-with used_col:
-    kits_used = st.number_input("Kits used", min_value=0, step=1, value=int(pending.get("kits_used") or 0))
-
-calculated_on_hand = expected_balance(review_patient, kits_received, kits_returned, kits_used)
-spoken_on_hand = pending.get("kits_on_hand")
-with onhand_col:
-    kits_on_hand = st.number_input(
-        "Kits on hand",
-        min_value=0,
-        step=1,
-        value=int(spoken_on_hand if spoken_on_hand is not None else max(calculated_on_hand, 0)),
-    )
-
-lot_col, sig_col = st.columns(2)
-with lot_col:
-    lot_number = st.text_input("Tracking or lot #", value=str(pending.get("lot_number") or ""))
-with sig_col:
-    e_signature = st.text_input(
-        "E-signature",
-        value=current_user_email(),
-        help="Automatically populated from the authenticated Trimera Health account.",
-    )
-
-dose = pending.get("dose_mg")
-notes_default = str(pending.get("notes") or "No additional notes")
-if dose and f"{dose} mg" not in notes_default.lower():
-    notes_default = f"Dose: {dose} mg" + (f"; {notes_default}" if notes_default else "")
-notes = st.text_input(
-    "Notes",
-    value=notes_default,
-    help="The current workbook has no separate dose column, so a dictated dose is retained here.",
-)
-
-if calculated_on_hand < 0:
-    st.error("The calculated balance is negative. Correct the quantities before adding this row.")
-elif kits_on_hand != calculated_on_hand:
-    st.warning(
-        f"Inventory mismatch: the prior balance and quantities calculate to {calculated_on_hand}, "
-        f"but the proposed physical count is {kits_on_hand}. Verify before proceeding."
-    )
-else:
-    st.success(f"Inventory reconciles at {calculated_on_hand} kits on hand.")
-
-required_ready = bool(queue and lot_number.strip() and e_signature.strip()) and calculated_on_hand >= 0
-approve_col, push_col = st.columns(2)
-with approve_col:
-    if st.button(
-        "Approve and add practice row",
-        type="primary",
-        use_container_width=True,
-        disabled=not required_ready,
-    ):
-        row = {
-            "DATE": entry_date.strftime("%m/%d/%Y"),
-            "# OF KITS RECEIVED": kits_received,
-            "# OF KITS RETURNED": kits_returned,
-            "# OF KITS USED": kits_used,
-            "# OF KITS ON HAND": kits_on_hand,
-            "TRACKING OR LOT #": lot_number.strip(),
-            "E-SIGNATURE": e_signature.strip(),
-            "Notes": notes.strip() or "No additional notes",
-        }
-        st.session_state["medlog_rows"][review_patient].append(row)
-        if kits_used > 0 and lot_number.strip():
-            st.session_state["medlog_on_hand_lot"][review_patient] = lot_number.strip()
-        st.session_state["medlog_patient"] = review_patient
-        if queue:
-            st.session_state["medlog_queue"] = queue[1:]
-        st.session_state.pop("medlog_review_patient", None)
-        if st.session_state["medlog_queue"]:
-            st.success(
-                f"Practice row added to {review_patient}. Review the next patient from the same recording."
-            )
-        else:
-            st.session_state["medlog_last_transcript"] = ""
-            st.success(f"All proposed rows were reviewed. No live record was changed.")
-        st.rerun()
-with push_col:
-    st.button(
-        "Push approved row to Teams",
-        use_container_width=True,
-        disabled=not TEAMS_WRITE_ENABLED,
-        help="This remains disabled until the Microsoft connector is configured and validated against a test workbook.",
-    )
+    batch_ready = not missing_lots and not mismatches and not negative_balances
+    practice_col, push_col = st.columns(2)
+    with practice_col:
+        if st.button(
+            "Add entire batch to practice log",
+            type="primary",
+            use_container_width=True,
+            disabled=not batch_ready,
+        ):
+            for entry, row in zip(queue, batch_rows):
+                patient_name = row.pop("Patient")
+                st.session_state["medlog_rows"][patient_name].append(row)
+                if entry["kits_used"] > 0 and entry.get("lot_number"):
+                    st.session_state["medlog_on_hand_lot"][patient_name] = entry["lot_number"]
+            clear_pending()
+            st.success("The entire fictional batch was added. No live record was changed.")
+            st.rerun()
+    with push_col:
+        st.button(
+            "Push batch to Teams test log",
+            use_container_width=True,
+            disabled=not (TEAMS_WRITE_ENABLED and batch_ready),
+            help="This remains disabled until the Microsoft connector is configured and validated against a test workbook.",
+        )
 
 if not TEAMS_WRITE_ENABLED:
     st.caption(
         "Teams submission is intentionally locked. Microsoft application approval and a test-workbook connection are required before live writes can be enabled."
     )
 
-st.markdown(f"### {review_patient} — fictional practice sheet")
-rows = st.session_state["medlog_rows"][review_patient]
-st.dataframe(pd.DataFrame(rows, columns=LOG_COLUMNS), use_container_width=True, hide_index=True)
+st.markdown("### Fictional practice log")
+all_rows = [
+    {"Patient": patient_name, **row}
+    for patient_name, patient_rows in st.session_state["medlog_rows"].items()
+    for row in patient_rows
+]
+st.dataframe(pd.DataFrame(all_rows), use_container_width=True, hide_index=True)
 
-csv_data = pd.DataFrame(rows, columns=LOG_COLUMNS).to_csv(index=False).encode("utf-8")
+csv_data = pd.DataFrame(all_rows).to_csv(index=False).encode("utf-8")
 st.download_button(
-    "Download this fictional sheet as CSV",
+    "Download the complete fictional log as CSV",
     data=csv_data,
-    file_name=f"{review_patient.replace(' ', '_')}_practice_med_log.csv",
+    file_name="Trimera_Spravato_Med_Log_Practice.csv",
     mime="text/csv",
 )
 
