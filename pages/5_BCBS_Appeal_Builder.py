@@ -25,6 +25,7 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import (
     Image,
     KeepTogether,
+    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -1385,6 +1386,89 @@ def create_second_level_cover_pdf(
     return output.getvalue()
 
 
+def create_code_specific_reference_pdf(codes: list[str]) -> bytes:
+    """Create an objective, code-specific E/M reference page for each billed code."""
+    references = {
+        "99214": {
+            "title": "Established patient office or other outpatient E/M - Level 4",
+            "selection": "Moderate medical decision making (MDM), or 30-39 minutes of total time on the date of the encounter.",
+            "mdm": [
+                "The overall MDM level is based on meeting 2 of the 3 MDM elements.",
+                "Problems addressed: moderate complexity, such as 2 or more stable chronic illnesses or 1 chronic illness with exacerbation, progression, or treatment side effects.",
+                "Data reviewed and analyzed: moderate amount and/or complexity under the applicable MDM data categories.",
+                "Risk of patient management: moderate, with prescription drug management listed as an example.",
+            ],
+            "ama_url": "https://www.ama-assn.org/practice-management/cpt/cpt-code-99214-established-patient-office-visit-30-39-minutes",
+        },
+        "99215": {
+            "title": "Established patient office or other outpatient E/M - Level 5",
+            "selection": "High medical decision making (MDM), or 40-54 minutes of total time on the date of the encounter.",
+            "mdm": [
+                "The overall MDM level is based on meeting 2 of the 3 MDM elements.",
+                "Problems addressed: high complexity, such as severe exacerbation or an illness or injury posing a threat to life or bodily function.",
+                "Data reviewed and analyzed: extensive amount and/or complexity under the applicable MDM data categories.",
+                "Risk of patient management: high.",
+            ],
+            "ama_url": "https://www.ama-assn.org/practice-management/cpt/cpt-code-99215-established-patient-office-visit-40-54-minutes",
+        },
+    }
+    selected = [code for code in codes if code in references]
+    if not selected:
+        return b""
+
+    output = io.BytesIO()
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "CodeReferenceTitle", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=16, leading=19, textColor=colors.HexColor("#17365D"),
+        alignment=TA_CENTER, spaceAfter=12,
+    )
+    heading_style = ParagraphStyle(
+        "CodeReferenceHeading", parent=styles["Heading2"], fontName="Helvetica-Bold",
+        fontSize=10.5, leading=13, textColor=colors.HexColor("#17365D"),
+        spaceBefore=8, spaceAfter=4,
+    )
+    body_style = ParagraphStyle(
+        "CodeReferenceBody", parent=styles["BodyText"], fontName="Helvetica",
+        fontSize=9, leading=12, textColor=colors.HexColor("#1F2937"), spaceAfter=6,
+    )
+    source_style = ParagraphStyle(
+        "CodeReferenceSource", parent=body_style, fontSize=7.5, leading=9.5,
+        textColor=colors.HexColor("#4B5563"),
+    )
+    story = []
+    for index, code in enumerate(selected):
+        item = references[code]
+        if index:
+            story.append(PageBreak())
+        story.append(Paragraph("CODE-SPECIFIC E/M REFERENCE", title_style))
+        story.append(Paragraph(f"<b>CPT code {code}</b>", heading_style))
+        story.append(Paragraph(item["title"], body_style))
+        story.append(Paragraph("Code-selection standard", heading_style))
+        story.append(Paragraph(item["selection"], body_style))
+        story.append(Paragraph("Medical decision-making framework", heading_style))
+        for line in item["mdm"]:
+            story.append(Paragraph(f"- {line}", body_style))
+        story.append(Paragraph("How this page should be used", heading_style))
+        story.append(Paragraph(
+            "This page states the objective code criteria only. The provider must determine and document "
+            "which criteria were satisfied by the encounter. Trimera does not make that clinical determination.",
+            body_style,
+        ))
+        story.append(Paragraph("Authoritative sources", heading_style))
+        story.append(Paragraph(f"AMA public code reference: {item['ama_url']}", source_style))
+        story.append(Paragraph(
+            "CMS Evaluation and Management Services, MLN006764, pages 23-25.", source_style,
+        ))
+
+    doc = SimpleDocTemplate(
+        output, pagesize=letter, rightMargin=0.7 * inch, leftMargin=0.7 * inch,
+        topMargin=0.6 * inch, bottomMargin=0.6 * inch,
+        title="Code-Specific E/M Reference",
+    )
+    doc.build(story)
+    return output.getvalue()
+
 def _draw_wrapped_paragraph(
     pdf_canvas: canvas.Canvas,
     text: str,
@@ -1493,7 +1577,8 @@ def create_provider_feedback_pdf(
             textColor=colors.HexColor("#111827"),
             fontName="Helvetica",
             fontSize=9,
-            fieldFlags="multiline",
+            maxlen=10000,
+            fieldFlags="multiline doNotScroll",
             forceBorder=True,
         )
 
@@ -1636,6 +1721,7 @@ def render_second_level_workflow() -> None:
         reference_rows.append(
             {
                 "Billed code": code,
+                "Code-specific criteria": "Included" if code in E_M_CODES else "Not available",
                 "AMA pages": ", ".join(map(str, ama_map.get(code, []))) or "Not found",
                 "CMS pages": ", ".join(map(str, cms_map.get(code, []))) or "Not found",
                 "Provider response field": "Included in fillable PDF",
@@ -1643,7 +1729,7 @@ def render_second_level_workflow() -> None:
         )
     st.dataframe(pd.DataFrame(reference_rows), use_container_width=True, hide_index=True)
     st.caption(
-        "Packet order: cover sheet, code-specific AMA pages, code-specific CMS pages, "
+        "Packet order: cover sheet, code-specific E/M reference, AMA guidance, CMS guidance, "
         "fillable provider worksheet, encounter note, upheld-denial correspondence, and optional letters."
     )
 
@@ -1664,6 +1750,7 @@ def render_second_level_workflow() -> None:
                 codes,
                 len(supporting_files or []),
             )
+            code_reference_pdf = create_code_specific_reference_pdf(codes)
             provider_pdf = create_provider_feedback_pdf(
                 reviewed_case,
                 provider_name,
@@ -1673,6 +1760,7 @@ def render_second_level_workflow() -> None:
             )
             packet = merge_fillable_pdfs(
                 cover_pdf,
+                code_reference_pdf,
                 ama_pdf,
                 cms_pdf,
                 provider_pdf,
