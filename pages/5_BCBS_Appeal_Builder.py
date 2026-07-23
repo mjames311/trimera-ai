@@ -5,6 +5,7 @@ import re
 import zipfile
 from copy import deepcopy
 from datetime import date, datetime
+from html import escape
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -20,6 +21,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 from reportlab.platypus import (
     Image,
     KeepTogether,
@@ -49,6 +51,17 @@ AMA_GUIDELINES_PATH = (
     Path(__file__).resolve().parents[1]
     / "Assets"
     / "2023-e-m-descriptors-guidelines.pdf"
+)
+CMS_GUIDELINES_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "reference"
+    / "mln006764_evaluation_management_services.pdf"
+)
+SECOND_LEVEL_DEFAULT_ADDRESS = (
+    "Blue Cross and Blue Shield of Texas\n"
+    "Appeal Coordinator\n"
+    "PO Box 660044\n"
+    "Dallas, TX 75266-0044"
 )
 
 AMOUNT_TO_CODE = {
@@ -1193,6 +1206,39 @@ def ama_guideline_pages(
     return output.getvalue(), code_pages
 
 
+def cms_guideline_pages(
+    guideline_pdf: bytes,
+    billed_codes: list[str],
+) -> tuple[bytes, dict[str, list[int]]]:
+    """Select CMS E/M overview pages when the manual does not list each CPT code."""
+    reader = PdfReader(io.BytesIO(guideline_pdf))
+    code_pages: dict[str, list[int]] = {}
+    selected_indexes: set[int] = set()
+    em_overview_pages = [23, 24, 25]
+
+    for raw_code in billed_codes:
+        code = str(raw_code).split()[0].strip().upper()
+        matches = [
+            page_index + 1
+            for page_index, page in enumerate(reader.pages)
+            if code and code in (page.extract_text() or "")
+        ]
+        if code in E_M_CODES or re.fullmatch(r"99\d{3}", code):
+            matches = sorted(set(matches + em_overview_pages))
+        valid_matches = [page for page in matches if 1 <= page <= len(reader.pages)]
+        if valid_matches:
+            code_pages[code] = valid_matches
+            selected_indexes.update(page - 1 for page in valid_matches)
+
+    writer = PdfWriter()
+    for page_index in sorted(selected_indexes):
+        writer.add_page(reader.pages[page_index])
+    if not selected_indexes:
+        return b"", code_pages
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue(), code_pages
+
 def merge_pdfs(*pdf_sources: bytes) -> bytes:
     writer = PdfWriter()
 
@@ -1207,6 +1253,527 @@ def merge_pdfs(*pdf_sources: bytes) -> bytes:
     writer.write(output)
     return output.getvalue()
 
+def _second_level_value(pattern: str, text: str) -> str:
+    match = re.search(pattern, text, flags=re.I | re.M)
+    return match.group(1).strip() if match else ""
+
+
+def extract_second_level_case(denial_text: str) -> dict[str, Any]:
+    """Extract editable identifiers from a BCBSTX upheld-denial letter."""
+    codes = sorted(set(re.findall(r"\b(?:9\d{4}|G\d{4})\b", denial_text, flags=re.I)))
+    rationale_match = re.search(
+        r"(We acknowledge.*?(?:denial|downcoding).*?upheld\.)",
+        denial_text,
+        flags=re.I | re.S,
+    )
+    rationale = (
+        re.sub(r"\s+", " ", rationale_match.group(1)).strip()
+        if rationale_match
+        else ""
+    )
+    return {
+        "patient": _second_level_value(r"^Patient Name:\s*(.+)$", denial_text),
+        "member_id": _second_level_value(r"^Subscriber ID:\s*(.+)$", denial_text),
+        "group_number": _second_level_value(r"^Group Number:\s*(.+)$", denial_text),
+        "claim_number": _second_level_value(r"^Claim Number:\s*(.+)$", denial_text),
+        "service_date": _second_level_value(r"^Service Date:\s*(.+)$", denial_text),
+        "codes": codes,
+        "rationale": rationale,
+    }
+
+
+def _pdf_paragraph(value: Any) -> str:
+    return escape(str(value or "")).replace("\n", "<br/>")
+
+
+def create_second_level_cover_pdf(
+    case: dict[str, str],
+    mailing_address: str,
+    appeal_date_value: date,
+    provider_name: str,
+    codes: list[str],
+    supporting_count: int,
+) -> bytes:
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=letter,
+        rightMargin=0.65 * inch,
+        leftMargin=0.65 * inch,
+        topMargin=0.55 * inch,
+        bottomMargin=0.55 * inch,
+    )
+    styles = getSampleStyleSheet()
+    title = ParagraphStyle(
+        "SecondLevelTitle",
+        parent=styles["Heading1"],
+        alignment=TA_CENTER,
+        fontName="Helvetica-Bold",
+        fontSize=15,
+        leading=18,
+        textColor=colors.HexColor("#17365D"),
+        spaceAfter=12,
+    )
+    normal = ParagraphStyle(
+        "SecondLevelNormal",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        spaceAfter=7,
+    )
+    label = ParagraphStyle(
+        "SecondLevelLabel",
+        parent=normal,
+        fontName="Helvetica-Bold",
+    )
+    story = [
+        Paragraph("SECOND-LEVEL / SPECIALTY APPEAL", title),
+        Paragraph(_pdf_paragraph(mailing_address), normal),
+        Spacer(1, 8),
+    ]
+    rows = [
+        [Paragraph("Appeal date", label), Paragraph(appeal_date_value.strftime("%m/%d/%Y"), normal)],
+        [Paragraph("Provider", label), Paragraph(_pdf_paragraph(provider_name), normal)],
+        [Paragraph("Patient", label), Paragraph(_pdf_paragraph(case["patient"]), normal)],
+        [Paragraph("Member ID", label), Paragraph(_pdf_paragraph(case["member_id"]), normal)],
+        [Paragraph("Group number", label), Paragraph(_pdf_paragraph(case["group_number"]), normal)],
+        [Paragraph("Claim number", label), Paragraph(_pdf_paragraph(case["claim_number"]), normal)],
+        [Paragraph("Date of service", label), Paragraph(_pdf_paragraph(case["service_date"]), normal)],
+        [Paragraph("Billed code(s)", label), Paragraph(_pdf_paragraph(", ".join(codes)), normal)],
+    ]
+    table = Table(rows, colWidths=[1.45 * inch, 5.0 * inch])
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B8C3CC")),
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EAF0F6")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.extend([table, Spacer(1, 14), Paragraph("ENCLOSURES", label)])
+    enclosures = [
+        "AMA guidance pages applicable to the billed code(s)",
+        "CMS evaluation and management guidance applicable to the billed code(s)",
+        "Fillable provider code-by-code response worksheet",
+        "Complete encounter note",
+        "BCBSTX upheld-denial correspondence",
+    ]
+    if supporting_count:
+        enclosures.append(f"Additional supporting correspondence ({supporting_count} file(s))")
+    story.extend(Paragraph(f"{index}. {_pdf_paragraph(item)}", normal) for index, item in enumerate(enclosures, 1))
+    story.extend(
+        [
+            Spacer(1, 12),
+            Paragraph(
+                "Please include this submission in the complete claim and appeal record and route it for the applicable second-level or specialty review.",
+                normal,
+            ),
+        ]
+    )
+    doc.build(story)
+    return output.getvalue()
+
+
+def extract_second_level_note_evidence(
+    note_bytes: bytes,
+    codes: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    """Extract code-relevant note excerpts without deciding code support."""
+    if not API_KEY:
+        raise RuntimeError("OPENAI_API_KEY is required to analyze the encounter note.")
+    reader = PdfReader(io.BytesIO(note_bytes))
+    note_text = "\n\n".join(
+        f"[PAGE {index}]\n{page.extract_text() or ''}"
+        for index, page in enumerate(reader.pages, 1)
+    )
+    client = OpenAI(api_key=API_KEY)
+    response = client.responses.create(
+        model=MODEL,
+        instructions=(
+            "Extract exact documentation evidence from an outpatient encounter note for a provider appeal worksheet. "
+            "Do not decide that any CPT code is supported. Do not invent, infer, or repair missing documentation. "
+            "For each requested code, return at most three short exact excerpts that may be relevant to the code's "
+            "documented requirements. Include the source page and a concise explanation of why the excerpt may be relevant. "
+            "Return only JSON in this format: "
+            '{"evidence":{"99214":[{"page":1,"excerpt":"exact text","relevance":"brief explanation"}]}}'
+        ),
+        input=(
+            f"REQUESTED CODES: {', '.join(codes)}\n\n"
+            f"ENCOUNTER NOTE:\n{note_text[:80000]}"
+        ),
+    )
+    parsed = json.loads(clean_json_text(response.output_text or ""))
+    raw_evidence = parsed.get("evidence", {})
+    result: dict[str, list[dict[str, Any]]] = {}
+    for code in codes:
+        items = raw_evidence.get(code, []) if isinstance(raw_evidence, dict) else []
+        cleaned = []
+        for item in items[:3]:
+            if not isinstance(item, dict) or not str(item.get("excerpt", "")).strip():
+                continue
+            cleaned.append(
+                {
+                    "page": int(item.get("page") or 0),
+                    "excerpt": str(item.get("excerpt", "")).strip()[:500],
+                    "relevance": str(item.get("relevance", "")).strip()[:300],
+                }
+            )
+        result[code] = cleaned
+    return result
+
+
+def _draw_wrapped_paragraph(
+    pdf_canvas: canvas.Canvas,
+    text: str,
+    x: float,
+    y: float,
+    width: float,
+    style: ParagraphStyle,
+) -> float:
+    paragraph = Paragraph(_pdf_paragraph(text), style)
+    _, height = paragraph.wrap(width, 10 * inch)
+    paragraph.drawOn(pdf_canvas, x, y - height)
+    return y - height
+
+
+def create_provider_feedback_pdf(
+    case: dict[str, str],
+    provider_name: str,
+    codes: list[str],
+    note_evidence: dict[str, list[dict[str, Any]]],
+    guideline_pages: dict[str, dict[str, list[int]]],
+    appeal_date_value: date,
+) -> bytes:
+    """Create provider worksheets with multiline fillable PDF fields."""
+    output = io.BytesIO()
+    pdf_canvas = canvas.Canvas(output, pagesize=letter)
+    width, height = letter
+    normal = ParagraphStyle(
+        "FillableNormal",
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=10.5,
+        textColor=colors.HexColor("#1F2937"),
+    )
+    small = ParagraphStyle(
+        "FillableSmall",
+        parent=normal,
+        fontSize=7.5,
+        leading=9.2,
+    )
+
+    for code in codes:
+        pdf_canvas.setTitle("BCBS Second-Level Provider Feedback")
+        pdf_canvas.setFillColor(colors.HexColor("#17365D"))
+        pdf_canvas.setFont("Helvetica-Bold", 15)
+        pdf_canvas.drawCentredString(width / 2, height - 0.55 * inch, "PROVIDER CLINICAL FEEDBACK")
+        pdf_canvas.setStrokeColor(colors.HexColor("#17365D"))
+        pdf_canvas.setLineWidth(1)
+        pdf_canvas.line(0.65 * inch, height - 0.68 * inch, width - 0.65 * inch, height - 0.68 * inch)
+
+        pdf_canvas.setFillColor(colors.HexColor("#1F2937"))
+        pdf_canvas.setFont("Helvetica", 8.5)
+        pdf_canvas.drawString(0.65 * inch, height - 0.92 * inch, f"Patient: {case['patient']}")
+        pdf_canvas.drawString(3.15 * inch, height - 0.92 * inch, f"Claim: {case['claim_number']}")
+        pdf_canvas.drawString(5.75 * inch, height - 0.92 * inch, f"DOS: {case['service_date']}")
+
+        pdf_canvas.setFont("Helvetica-Bold", 12)
+        pdf_canvas.setFillColor(colors.HexColor("#17365D"))
+        pdf_canvas.drawString(0.65 * inch, height - 1.25 * inch, f"Originally billed CPT/HCPCS code: {code}")
+
+        references = guideline_pages.get(code, {})
+        reference_text = "; ".join(
+            f"{source} page(s) {', '.join(map(str, pages))}"
+            for source, pages in references.items()
+            if pages
+        ) or "No matching reference page was automatically identified."
+        pdf_canvas.setFillColor(colors.HexColor("#1F2937"))
+        pdf_canvas.setFont("Helvetica-Bold", 8)
+        pdf_canvas.drawString(0.65 * inch, height - 1.48 * inch, "Reference pages included:")
+        pdf_canvas.setFont("Helvetica", 8)
+        pdf_canvas.drawString(2.20 * inch, height - 1.48 * inch, reference_text[:90])
+
+        y = height - 1.75 * inch
+        pdf_canvas.setFont("Helvetica-Bold", 8.5)
+        pdf_canvas.drawString(0.65 * inch, y, "BCBSTX upheld-denial rationale")
+        y -= 0.08 * inch
+        y = _draw_wrapped_paragraph(
+            pdf_canvas,
+            case.get("rationale") or "No denial rationale was extracted; review the attached correspondence.",
+            0.65 * inch,
+            y,
+            7.2 * inch,
+            small,
+        ) - 0.14 * inch
+
+        pdf_canvas.setFont("Helvetica-Bold", 8.5)
+        pdf_canvas.drawString(0.65 * inch, y, "Relevant documentation located in the encounter note")
+        y -= 0.12 * inch
+        evidence_items = note_evidence.get(code, [])
+        if not evidence_items:
+            y = _draw_wrapped_paragraph(
+                pdf_canvas,
+                "No code-relevant excerpt was automatically identified. The provider should review the complete attached note.",
+                0.75 * inch,
+                y,
+                7.0 * inch,
+                small,
+            ) - 0.08 * inch
+        for item in evidence_items[:3]:
+            page_label = f"Page {item['page']}: " if item.get("page") else ""
+            item_text = f"- {page_label}\"{item['excerpt']}\""
+            if item.get("relevance"):
+                item_text += f" ({item['relevance']})"
+            y = _draw_wrapped_paragraph(
+                pdf_canvas,
+                item_text,
+                0.75 * inch,
+                y,
+                7.0 * inch,
+                small,
+            ) - 0.06 * inch
+
+        field_top = min(y - 0.16 * inch, 5.85 * inch)
+        field_bottom = 1.45 * inch
+        field_height = max(2.2 * inch, field_top - field_bottom)
+        if field_bottom + field_height > field_top:
+            field_height = max(1.8 * inch, field_top - field_bottom)
+        pdf_canvas.setFont("Helvetica-Bold", 9)
+        pdf_canvas.drawString(
+            0.65 * inch,
+            field_bottom + field_height + 0.10 * inch,
+            f"Provider clinical explanation of why {code} is supported",
+        )
+        pdf_canvas.acroForm.textfield(
+            name=f"provider_response_{code}",
+            tooltip=f"Provider explanation for {code}",
+            x=0.65 * inch,
+            y=field_bottom,
+            width=7.2 * inch,
+            height=field_height,
+            borderStyle="solid",
+            borderWidth=1,
+            borderColor=colors.HexColor("#7A8A99"),
+            fillColor=colors.HexColor("#FFFFFF"),
+            textColor=colors.HexColor("#111827"),
+            fontName="Helvetica",
+            fontSize=9,
+            fieldFlags="multiline",
+            forceBorder=True,
+        )
+
+        pdf_canvas.setFont("Helvetica", 8)
+        pdf_canvas.drawString(0.65 * inch, 1.10 * inch, "Provider signature:")
+        pdf_canvas.acroForm.textfield(
+            name=f"provider_signature_{code}",
+            tooltip=f"Provider signature for {code}",
+            x=1.55 * inch,
+            y=0.92 * inch,
+            width=3.45 * inch,
+            height=0.32 * inch,
+            borderStyle="underlined",
+            borderWidth=1,
+            forceBorder=True,
+        )
+        pdf_canvas.drawString(5.25 * inch, 1.10 * inch, "Date:")
+        pdf_canvas.acroForm.textfield(
+            name=f"provider_date_{code}",
+            tooltip=f"Provider date for {code}",
+            value=appeal_date_value.strftime("%m/%d/%Y"),
+            x=5.58 * inch,
+            y=0.92 * inch,
+            width=1.55 * inch,
+            height=0.32 * inch,
+            borderStyle="underlined",
+            borderWidth=1,
+            forceBorder=True,
+        )
+        pdf_canvas.setFillColor(colors.HexColor("#5F6B76"))
+        pdf_canvas.setFont("Helvetica-Oblique", 7.5)
+        pdf_canvas.drawString(
+            0.65 * inch,
+            0.55 * inch,
+            "Provider-authored response required. Trimera does not add or infer clinical facts.",
+        )
+        pdf_canvas.showPage()
+
+    pdf_canvas.save()
+    return output.getvalue()
+
+
+def merge_fillable_pdfs(*pdf_sources: bytes) -> bytes:
+    """Merge packet sections while retaining AcroForm fields."""
+    writer = PdfWriter()
+    for source in pdf_sources:
+        if source:
+            writer.append(io.BytesIO(source))
+    writer.set_need_appearances_writer(True)
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+def render_second_level_workflow() -> None:
+    st.markdown("### Second-level / specialty appeal")
+    st.caption(
+        "Upload the encounter note and BCBSTX upheld-denial correspondence. "
+        "Trimera creates a fillable PDF for Dr. Maxwell; she does not use this app."
+    )
+    denial_file = st.file_uploader(
+        "1. Upload BCBSTX upheld-denial correspondence",
+        type=["pdf"],
+        key="second_level_denial",
+    )
+    note_file = st.file_uploader(
+        "2. Upload the complete encounter note",
+        type=["pdf"],
+        key="second_level_note",
+    )
+    supporting_files = st.file_uploader(
+        "3. Upload additional supporting letters (optional)",
+        type=["pdf"],
+        accept_multiple_files=True,
+        key="second_level_supporting",
+    )
+    if denial_file is None or note_file is None:
+        st.info("Upload both required PDFs to begin the second-level packet review.")
+        return
+
+    try:
+        denial_bytes = denial_file.getvalue()
+        denial_text = extract_pdf_text(denial_bytes)
+        case = extract_second_level_case(denial_text)
+    except Exception as exc:
+        st.error(f"The upheld-denial correspondence could not be read: {exc}")
+        return
+
+    st.markdown("### Review extracted appeal details")
+    left, right = st.columns(2)
+    with left:
+        patient = st.text_input("Patient name", value=case["patient"], key="second_patient")
+        member_id = st.text_input("Member ID", value=case["member_id"], key="second_member")
+        group_number = st.text_input("Group number", value=case["group_number"], key="second_group")
+        claim_number = st.text_input("Claim number", value=case["claim_number"], key="second_claim")
+    with right:
+        service_date = st.text_input("Date of service", value=case["service_date"], key="second_dos")
+        codes_raw = st.text_input("Originally billed code(s)", value=", ".join(case["codes"]), key="second_codes")
+        provider_name = st.text_input("Provider", value="Rebecca H. Maxwell, MD", key="second_provider")
+        appeal_date_value = st.date_input("Appeal date", value=date.today(), key="second_date")
+    mailing_address = st.text_area(
+        "Mailing address",
+        value=SECOND_LEVEL_DEFAULT_ADDRESS,
+        height=125,
+        key="second_address",
+    )
+    reviewed_case = {
+        "patient": patient.strip(),
+        "member_id": member_id.strip(),
+        "group_number": group_number.strip(),
+        "claim_number": claim_number.strip(),
+        "service_date": service_date.strip(),
+        "rationale": case["rationale"],
+    }
+    if case["rationale"]:
+        with st.expander("BCBSTX upheld-denial rationale"):
+            st.write(case["rationale"])
+
+    codes = list(dict.fromkeys(re.findall(r"\b(?:9\d{4}|G\d{4})\b", codes_raw.upper())))
+    if not codes:
+        st.error("Confirm at least one valid five-character billed code.")
+        return
+
+    try:
+        ama_pdf, ama_map = ama_guideline_pages(AMA_GUIDELINES_PATH.read_bytes(), codes)
+        cms_pdf, cms_map = cms_guideline_pages(CMS_GUIDELINES_PATH.read_bytes(), codes)
+    except OSError as exc:
+        st.error(f"A required AMA/CMS reference file is unavailable: {exc}")
+        return
+
+    guideline_pages = {
+        code: {
+            "AMA": ama_map.get(code, []),
+            "CMS": cms_map.get(code, []),
+        }
+        for code in codes
+    }
+    st.markdown("### Packet contents")
+    reference_rows = []
+    for code in codes:
+        reference_rows.append(
+            {
+                "Billed code": code,
+                "AMA pages": ", ".join(map(str, ama_map.get(code, []))) or "Not found",
+                "CMS pages": ", ".join(map(str, cms_map.get(code, []))) or "Not found",
+                "Provider response field": "Included in fillable PDF",
+            }
+        )
+    st.dataframe(pd.DataFrame(reference_rows), use_container_width=True, hide_index=True)
+    st.caption(
+        "Packet order: cover sheet, code-specific AMA pages, code-specific CMS pages, "
+        "fillable provider worksheet, encounter note, upheld-denial correspondence, and optional letters."
+    )
+
+    required_values = [patient, member_id, claim_number, service_date, mailing_address, provider_name]
+    ready = all(str(value).strip() for value in required_values)
+    if st.button(
+        "Create fillable PDF for Dr. Maxwell",
+        type="primary",
+        use_container_width=True,
+        disabled=not ready,
+    ):
+        try:
+            with st.spinner("Pulling code-relevant documentation from the encounter note..."):
+                note_evidence = extract_second_level_note_evidence(
+                    note_file.getvalue(),
+                    codes,
+                )
+            cover_pdf = create_second_level_cover_pdf(
+                reviewed_case,
+                mailing_address,
+                appeal_date_value,
+                provider_name,
+                codes,
+                len(supporting_files or []),
+            )
+            provider_pdf = create_provider_feedback_pdf(
+                reviewed_case,
+                provider_name,
+                codes,
+                note_evidence,
+                guideline_pages,
+                appeal_date_value,
+            )
+            packet = merge_fillable_pdfs(
+                cover_pdf,
+                ama_pdf,
+                cms_pdf,
+                provider_pdf,
+                note_file.getvalue(),
+                denial_bytes,
+                *[item.getvalue() for item in (supporting_files or [])],
+            )
+            filename = (
+                f"BCBS_SECOND_LEVEL_FILLABLE_{filename_safe(patient)}_"
+                f"{filename_safe(claim_number)}.pdf"
+            )
+            st.success(
+                "The fillable packet is ready. Send it to Dr. Maxwell so she can type, save, and return her responses."
+            )
+            st.download_button(
+                "Download fillable packet for Dr. Maxwell",
+                data=packet,
+                file_name=filename,
+                mime="application/pdf",
+                use_container_width=True,
+                on_click="ignore",
+            )
+        except Exception as exc:
+            st.error(f"The second-level packet could not be generated: {exc}")
 
 apply_trimera_theme()
 require_auth(APP_TITLE, "Internal Trimera Health tool")
@@ -1229,6 +1796,15 @@ page_header(
     "BCBS Appeal Builder",
     "Build downcoding appeal packets from remittance reports, encounter notes, and the current tracker.",
 )
+appeal_level = st.radio(
+    "Appeal level",
+    options=["First-level appeal", "Second-level / specialty appeal"],
+    horizontal=True,
+)
+
+if appeal_level == "Second-level / specialty appeal":
+    render_second_level_workflow()
+    st.stop()
 
 report_files = st.file_uploader(
     "1. Upload one or more BCBS remittance reports",
