@@ -1176,23 +1176,28 @@ def ama_guideline_pages(
     guideline_pdf: bytes,
     billed_codes: list[str],
 ) -> tuple[bytes, dict[str, list[int]]]:
-    """Copy original AMA pages containing each billed CPT code."""
+    """Copy code-relevant AMA pages without relying on incidental code mentions."""
     reader = PdfReader(io.BytesIO(guideline_pdf))
     code_pages: dict[str, list[int]] = {}
     selected_indexes = set()
+    office_em_pages = [6, 8, 9, 10, 20]
 
     for raw_code in billed_codes:
         code = str(raw_code).split()[0].strip().upper()
         if not code or not code.isdigit():
             continue
 
-        matches = []
-        for page_index, page in enumerate(reader.pages):
-            if code in (page.extract_text() or ""):
-                matches.append(page_index + 1)
-                selected_indexes.add(page_index)
+        if code in E_M_CODES:
+            matches = [page for page in office_em_pages if page <= len(reader.pages)]
+        else:
+            matches = [
+                page_index + 1
+                for page_index, page in enumerate(reader.pages)
+                if re.search(rf"(?<!\d){re.escape(code)}(?!\d)", page.extract_text() or "")
+            ]
         if matches:
             code_pages[code] = matches
+            selected_indexes.update(page - 1 for page in matches)
 
     writer = PdfWriter()
     for page_index in sorted(selected_indexes):
@@ -1380,54 +1385,6 @@ def create_second_level_cover_pdf(
     return output.getvalue()
 
 
-def extract_second_level_note_evidence(
-    note_bytes: bytes,
-    codes: list[str],
-) -> dict[str, list[dict[str, Any]]]:
-    """Extract code-relevant note excerpts without deciding code support."""
-    if not API_KEY:
-        raise RuntimeError("OPENAI_API_KEY is required to analyze the encounter note.")
-    reader = PdfReader(io.BytesIO(note_bytes))
-    note_text = "\n\n".join(
-        f"[PAGE {index}]\n{page.extract_text() or ''}"
-        for index, page in enumerate(reader.pages, 1)
-    )
-    client = OpenAI(api_key=API_KEY)
-    response = client.responses.create(
-        model=MODEL,
-        instructions=(
-            "Extract exact documentation evidence from an outpatient encounter note for a provider appeal worksheet. "
-            "Do not decide that any CPT code is supported. Do not invent, infer, or repair missing documentation. "
-            "For each requested code, return at most three short exact excerpts that may be relevant to the code's "
-            "documented requirements. Include the source page and a concise explanation of why the excerpt may be relevant. "
-            "Return only JSON in this format: "
-            '{"evidence":{"99214":[{"page":1,"excerpt":"exact text","relevance":"brief explanation"}]}}'
-        ),
-        input=(
-            f"REQUESTED CODES: {', '.join(codes)}\n\n"
-            f"ENCOUNTER NOTE:\n{note_text[:80000]}"
-        ),
-    )
-    parsed = json.loads(clean_json_text(response.output_text or ""))
-    raw_evidence = parsed.get("evidence", {})
-    result: dict[str, list[dict[str, Any]]] = {}
-    for code in codes:
-        items = raw_evidence.get(code, []) if isinstance(raw_evidence, dict) else []
-        cleaned = []
-        for item in items[:3]:
-            if not isinstance(item, dict) or not str(item.get("excerpt", "")).strip():
-                continue
-            cleaned.append(
-                {
-                    "page": int(item.get("page") or 0),
-                    "excerpt": str(item.get("excerpt", "")).strip()[:500],
-                    "relevance": str(item.get("relevance", "")).strip()[:300],
-                }
-            )
-        result[code] = cleaned
-    return result
-
-
 def _draw_wrapped_paragraph(
     pdf_canvas: canvas.Canvas,
     text: str,
@@ -1446,7 +1403,6 @@ def create_provider_feedback_pdf(
     case: dict[str, str],
     provider_name: str,
     codes: list[str],
-    note_evidence: dict[str, list[dict[str, Any]]],
     guideline_pages: dict[str, dict[str, list[int]]],
     appeal_date_value: date,
 ) -> bytes:
@@ -1512,34 +1468,7 @@ def create_provider_feedback_pdf(
             small,
         ) - 0.14 * inch
 
-        pdf_canvas.setFont("Helvetica-Bold", 8.5)
-        pdf_canvas.drawString(0.65 * inch, y, "Relevant documentation located in the encounter note")
-        y -= 0.12 * inch
-        evidence_items = note_evidence.get(code, [])
-        if not evidence_items:
-            y = _draw_wrapped_paragraph(
-                pdf_canvas,
-                "No code-relevant excerpt was automatically identified. The provider should review the complete attached note.",
-                0.75 * inch,
-                y,
-                7.0 * inch,
-                small,
-            ) - 0.08 * inch
-        for item in evidence_items[:3]:
-            page_label = f"Page {item['page']}: " if item.get("page") else ""
-            item_text = f"- {page_label}\"{item['excerpt']}\""
-            if item.get("relevance"):
-                item_text += f" ({item['relevance']})"
-            y = _draw_wrapped_paragraph(
-                pdf_canvas,
-                item_text,
-                0.75 * inch,
-                y,
-                7.0 * inch,
-                small,
-            ) - 0.06 * inch
-
-        field_top = min(y - 0.16 * inch, 5.85 * inch)
+        field_top = min(y - 0.22 * inch, 6.55 * inch)
         field_bottom = 1.45 * inch
         field_height = max(2.2 * inch, field_top - field_bottom)
         if field_bottom + field_height > field_top:
@@ -1548,7 +1477,7 @@ def create_provider_feedback_pdf(
         pdf_canvas.drawString(
             0.65 * inch,
             field_bottom + field_height + 0.10 * inch,
-            f"Provider clinical explanation of why {code} is supported",
+            f"Provider reasoning for billed code {code}",
         )
         pdf_canvas.acroForm.textfield(
             name=f"provider_response_{code}",
@@ -1721,17 +1650,12 @@ def render_second_level_workflow() -> None:
     required_values = [patient, member_id, claim_number, service_date, mailing_address, provider_name]
     ready = all(str(value).strip() for value in required_values)
     if st.button(
-        "Create fillable PDF for Dr. Maxwell",
+        "Create fillable PDF",
         type="primary",
         use_container_width=True,
         disabled=not ready,
     ):
         try:
-            with st.spinner("Pulling code-relevant documentation from the encounter note..."):
-                note_evidence = extract_second_level_note_evidence(
-                    note_file.getvalue(),
-                    codes,
-                )
             cover_pdf = create_second_level_cover_pdf(
                 reviewed_case,
                 mailing_address,
@@ -1744,7 +1668,6 @@ def render_second_level_workflow() -> None:
                 reviewed_case,
                 provider_name,
                 codes,
-                note_evidence,
                 guideline_pages,
                 appeal_date_value,
             )
