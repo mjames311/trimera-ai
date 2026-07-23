@@ -114,7 +114,19 @@ patient's facts into a later patient's notes.
 
 
 def initialize_state() -> None:
-    state_source = GOOGLE_SHEETS_SPREADSHEET_ID or "unconfigured"
+    patient_snapshot = tuple(
+        (
+            name,
+            details["opening_balance"],
+            details["opening_lot"],
+            details["opening_date"],
+        )
+        for name, details in PATIENTS.items()
+    )
+    state_source = (
+        GOOGLE_SHEETS_SPREADSHEET_ID or "unconfigured",
+        patient_snapshot,
+    )
     if st.session_state.get("medlog_state_source") != state_source:
         first_patient = next(iter(PATIENTS))
         st.session_state["medlog_state_source"] = state_source
@@ -507,14 +519,17 @@ if queue:
         st.error("The proposed transaction would create negative inventory for: " + ", ".join(negative_balances) + ".")
 
     batch_ready = not missing_lots and not negative_balances
-    practice_col, push_col = st.columns(2)
-    with practice_col:
-        if st.button(
-            "Approve batch and add to practice log",
-            type="primary",
-            use_container_width=True,
-            disabled=not batch_ready,
-        ):
+    push_clicked = st.button(
+        "Approve batch and push to medication log",
+        type="primary",
+        use_container_width=True,
+        disabled=not (google_sheet_push_configured() and batch_ready),
+        help="Appends the reviewed rows to the configured restricted Google Sheet.",
+    )
+    if push_clicked:
+        try:
+            with st.spinner("Writing the approved batch to the medication log..."):
+                written = push_batch_to_google_sheet(batch_rows)
             for entry, row in zip(queue, batch_rows):
                 practice_row = row.copy()
                 patient_name = practice_row.pop("Patient")
@@ -524,24 +539,11 @@ if queue:
                     and entry.get("lot_number")
                 ):
                     st.session_state["medlog_on_hand_lot"][patient_name] = entry["lot_number"]
+            load_patients_from_google_sheet.clear()
             clear_pending()
-            st.success("The entire fictional batch was added. No live record was changed.")
-            st.rerun()
-    with push_col:
-        push_clicked = st.button(
-            "Push approved batch to Google test log",
-            use_container_width=True,
-            disabled=not (google_sheet_push_configured() and batch_ready),
-            help="Appends the reviewed rows to the configured restricted Google Sheet.",
-        )
-        if push_clicked:
-            try:
-                with st.spinner("Writing the approved batch to the Google test log..."):
-                    written = push_batch_to_google_sheet(batch_rows)
-                clear_pending()
-                st.success(f"Pushed {written} approved row(s) to the Google test log.")
-            except Exception as exc:
-                st.error(f"The batch was not written: {exc}")
+            st.success(f"Added {written} approved row(s) to the medication log.")
+        except Exception as exc:
+            st.error(f"The batch was not written: {exc}")
 
 if not google_sheet_push_configured():
     st.caption(
