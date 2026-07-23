@@ -1,4 +1,3 @@
-import base64
 import io
 import json
 import os
@@ -12,7 +11,6 @@ from xml.etree import ElementTree as ET
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 from openai import OpenAI
 from pypdf import PdfReader, PdfWriter
 from rapidfuzz import fuzz
@@ -1210,40 +1208,6 @@ def merge_pdfs(*pdf_sources: bytes) -> bytes:
     return output.getvalue()
 
 
-def start_individual_downloads(packets: list[tuple[str, bytes]]) -> None:
-    """Ask the browser to download each completed appeal as its own PDF."""
-    payloads = [
-        {
-            "name": filename,
-            "data": base64.b64encode(file_bytes).decode("ascii"),
-        }
-        for filename, file_bytes in packets
-    ]
-    script = """
-<script>
-const files = __FILES__;
-files.forEach((file, index) => {
-  window.setTimeout(() => {
-    const binary = window.atob(file.data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    const url = URL.createObjectURL(new Blob([bytes], {type: "application/pdf"}));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = file.name;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }, index * 350);
-});
-</script>
-""".replace("__FILES__", json.dumps(payloads))
-    components.html(script, height=0)
-
-
 apply_trimera_theme()
 require_auth(APP_TITLE, "Internal Trimera Health tool")
 render_topbar()
@@ -1597,28 +1561,32 @@ if report_files and note_files:
         ).to_csv(index=False)
 
         if built:
-            st.success(f"Built {len(built)} appeal packet(s).")
-            start_individual_downloads(built)
-            st.caption(
-                "Each appeal PDF should begin downloading automatically. "
-                "If your browser blocks multiple downloads, use the individual "
-                "buttons below."
-            )
-            for packet_index, (output_name, output_bytes) in enumerate(built):
-                st.download_button(
-                    f"Download {output_name}",
-                    data=output_bytes,
-                    file_name=output_name,
-                    mime="application/pdf",
-                    use_container_width=True,
-                    on_click="ignore",
-                    key=f"appeal_pdf_{packet_index}",
+            zip_output = io.BytesIO()
+            with zipfile.ZipFile(
+                zip_output,
+                "w",
+                compression=zipfile.ZIP_DEFLATED,
+            ) as archive:
+                for output_name, output_bytes in built:
+                    archive.writestr(output_name, output_bytes)
+                archive.writestr(
+                    "APPEAL_PACKET_MANIFEST.csv",
+                    manifest_csv,
                 )
+
+            st.success(f"Built {len(built)} appeal packet(s).")
+            st.caption(
+                "Download the ZIP file below. It contains every completed "
+                "appeal PDF and the appeal manifest."
+            )
             st.download_button(
-                "Download appeal manifest",
-                data=manifest_csv,
-                file_name="APPEAL_PACKET_MANIFEST.csv",
-                mime="text/csv",
+                "Download all appeal packets",
+                data=zip_output.getvalue(),
+                file_name=(
+                    f"BCBS_APPEAL_PACKETS_"
+                    f"{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
+                ),
+                mime="application/zip",
                 use_container_width=True,
                 on_click="ignore",
             )
